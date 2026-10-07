@@ -1,0 +1,18 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+jobs:
+  ci:
+    uses: Chatty4/.github/.github/workflows/python-ci.yml@dev
+    with:
+      needs-postgres: true
+      test-env: |
+        SECRET_KEY=ci-not-secret
+        ALLOWED_HOSTS=127.0.0.1
+      pre-test-commands: |
+        python manage.py check
+        python manage.py makemigrations --check --dry-run
