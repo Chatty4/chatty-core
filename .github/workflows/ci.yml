@@ -13,3 +13,6 @@ jobs:
       test-env: |
         SECRET_KEY=ci-not-secret
         ALLOWED_HOSTS=127.0.0.1
+      pre-test-commands: |
+        python manage.py check
+        python manage.py makemigrations --check --dry-run
