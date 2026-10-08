@@ -136,6 +136,25 @@ MAILERS = {
     },
 }
 
+REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": "shared.exception_handler.exception_handler",
+    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    # JWT authentication is added with CHAT-148 (shared/authentication.py).
+    "DEFAULT_AUTHENTICATION_CLASSES": [],
+}
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "default"},
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+}
+
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
