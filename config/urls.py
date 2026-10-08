@@ -24,3 +24,5 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("health", health, name="health"),
 ]
+
+handler404 = "config.views.not_found"

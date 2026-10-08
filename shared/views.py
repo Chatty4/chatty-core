@@ -30,7 +30,7 @@ class AsyncAPIView(APIView):
             if inspect.isawaitable(response):  # DRF's options() is sync
                 response = await response
         except Exception as exc:
-            response = self.handle_exception(exc)
+            response = await sync_to_async(self.handle_exception)(exc)
 
         self.response = self.finalize_response(drf_request, response, *args, **kwargs)
         return self.response

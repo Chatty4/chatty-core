@@ -27,3 +27,8 @@ async def health(request) -> JsonResponse:
     if db == "ok":
         return JsonResponse({"status": "ok", "db": db})
     return JsonResponse({"status": "degraded", "db": db}, status=503)
+
+
+def not_found(request, exception) -> JsonResponse:
+    """Unknown URL: same error body as the rest of the API."""
+    return JsonResponse({"error": {"code": "not_found", "message": "Not found"}}, status=404)
