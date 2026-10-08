@@ -1,5 +1,6 @@
 import pytest
 from rest_framework import serializers
+
 from shared.serializers import validated
 
 
