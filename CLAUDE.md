@@ -87,8 +87,9 @@ Async by default, with explicit sync islands.
   `async def`. Don't use plain DRF `APIView`, `ViewSet` or generic views: they are sync. Django raises
   `ImproperlyConfigured` if a view mixes sync and async handlers.
 - `AsyncAPIView.dispatch` runs DRF's `initial()` (authentication, permissions, throttling) in a thread with
-  `sync_to_async`. Authentication and permission classes, and the exception handler, are therefore sync
-  code: they may use the sync ORM but must stay short.
+  `sync_to_async`, and so does `handle_exception` (the exception handler). Authentication and permission
+  classes, and the exception handler, are therefore sync code: they may use the sync ORM but must stay
+  short.
 - All `sync_to_async` work in a uvicorn worker shares one thread. Keep sync islands short; scale with workers.
 - `AsyncAPIView.dispatch` mirrors DRF's `APIView.dispatch`. When upgrading DRF, compare the two and port
   any changes.
