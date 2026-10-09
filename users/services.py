@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from django.db import IntegrityError
 
 from shared.codes import ErrorCode
@@ -24,3 +26,8 @@ class UserService:
             return await UserRepository.create_user(email, display_name, password)
         except IntegrityError:  # two requests with the same email at the same time
             raise Conflict(ErrorCode.EMAIL_TAKEN)
+
+    @staticmethod
+    async def deactivate(user_ids: list[UUID]) -> list[UUID]:
+        """no user.deactivated event yet. CHAT-172 publishes it here with transaction.on_commit"""
+        return await UserRepository.deactivate_user(user_ids)
