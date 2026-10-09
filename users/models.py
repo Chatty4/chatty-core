@@ -5,7 +5,7 @@ from django.db import models
 
 
 class UserManager(BaseUserManager):
-    def create_user(self, email: str, display_name: str, password: str) -> "User":
+    def create_user(self, email: str, display_name: str, password: str) -> User:
         user = self.model(
             email=self.normalize_email(email).lower(),
             display_name=display_name,
@@ -14,7 +14,7 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email: str, display_name: str, password: str) -> "User":
+    def create_superuser(self, email: str, display_name: str, password: str) -> User:
         user = self.create_user(email, display_name, password)
         user.is_staff = True
         user.save(using=self._db)

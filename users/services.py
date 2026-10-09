@@ -1,4 +1,6 @@
 from asgiref.sync import sync_to_async
+from uuid import UUID
+
 from django.db import IntegrityError
 
 from authn.schemas import TokenPairSchema
@@ -55,3 +57,8 @@ class UserService:
             raise UserInactive()
 
         return await AuthnService().issue_tokens(user)
+
+    @staticmethod
+    async def deactivate(user_ids: list[UUID]) -> list[UUID]:
+        """no user.deactivated event yet. CHAT-172 publishes it here with transaction.on_commit"""
+        return await UserRepository.deactivate_user(user_ids)
