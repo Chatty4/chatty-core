@@ -12,6 +12,7 @@ jobs:
       needs-postgres: true
       test-env: |
         SECRET_KEY=ci-not-secret
+        CORE_SERVICE_TOKEN=ci-not-secret
         ALLOWED_HOSTS=127.0.0.1
       pre-test-commands: |
         python manage.py check
