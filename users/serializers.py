@@ -29,3 +29,16 @@ class UserResponse(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "email", "display_name", "avatar_file_id", "timezone"]
+
+
+class LoginRequest(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+
+
+class TokenPairResponse(serializers.Serializer):
+    access_token = serializers.CharField()
+    token_type = serializers.CharField()
+    expires_in = serializers.IntegerField()
+    refresh_token = serializers.CharField()
+    refresh_expires_in = serializers.IntegerField()

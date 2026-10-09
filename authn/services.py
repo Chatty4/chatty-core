@@ -33,7 +33,8 @@ class AuthnService:
         return self._build_token_pair(str(user.id), raw)
 
     async def refresh_tokens(self, raw_token: str) -> TokenPairSchema:
-        """Rotate a refresh token: revoke the old one and issue a new pair. Raises Unauthorized if the token is missing, revoked, or expired."""
+        """Rotate a refresh token: revoke the old one and issue a new pair. Raises Unauthorized if
+        the token is missing, revoked, or expired."""
         token = await self.repo.get_by_hash(hashlib.sha256(raw_token.encode()).hexdigest())
 
         if token is None or token.revoked_at is not None or token.expires_at <= timezone.now():

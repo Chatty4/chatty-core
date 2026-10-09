@@ -42,6 +42,12 @@ shared/                 code used by more than one app, no business rules
   pagination.py         cursor pagination from api-core.md
   events.py             Redis publisher for core.events (D-06, D-08)
   storage.py            MinIO client and presigned URLs
+authn/                  refresh token model, RS256 JWT issuance, rotation and revocation
+  models.py             RefreshToken (stores SHA-256 hash only, never the raw token)
+  repository.py         async ORM queries for refresh tokens
+  schemas.py            TokenPairSchema (Pydantic) returned by AuthnService
+  services.py           AuthnService: issue_tokens, refresh_tokens, revoke_*
+  migrations/
 <app>/                  users, teams, channels, files, ...
   models.py             tables only: fields, constraints, indexes. No business logic
   repositories.py       the only place that queries the ORM
