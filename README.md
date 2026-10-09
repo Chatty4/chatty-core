@@ -31,6 +31,15 @@ python -c "from django.core.management.utils import get_random_secret_key; print
 
 Use `127.0.0.1` in `.env` URLs, not `localhost` (Docker publishes the infra ports on IPv4 only).
 
+## JWT keys
+
+Generate the RS256 key pair once per environment (requires Docker):
+
+```bash
+docker run --rm -v ${PWD}/keys:/keys alpine/openssl genrsa -out /keys/jwt_private.pem 2048
+docker run --rm -v ${PWD}/keys:/keys alpine/openssl rsa -in /keys/jwt_private.pem -pubout -out /keys/jwt_public.pem
+```
+
 ## Run
 
 ```bash
