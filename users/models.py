@@ -7,7 +7,7 @@ from django.db import models
 class UserManager(BaseUserManager):
     def create_user(self, email: str, display_name: str, password: str) -> "User":
         user = self.model(
-            email=self.normalize_email(email),
+            email=self.normalize_email(email).lower(),
             display_name=display_name,
         )
         user.set_password(password)
@@ -35,6 +35,12 @@ class User(AbstractBaseUser):
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["display_name"]
+
+    def has_perm(self, perm, obj=None):
+        return self.is_staff
+
+    def has_module_perms(self, app_label):
+        return self.is_staff
 
     class Meta:
         db_table = "users"
