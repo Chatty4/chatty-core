@@ -1,14 +1,22 @@
 from django.db import IntegrityError
 
 from shared.codes import ErrorCode
-from shared.exceptions import Conflict
+from shared.exceptions import Conflict, RateLimited
+from shared.redis import rate_limit
 from users.models import User
 from users.repositories import UserRepository
+
+REGISTER_LIMIT = 10
+REGISTER_WINDOW = 60 * 60
 
 
 class UserService:
     @staticmethod
-    async def register(email: str, display_name: str, password: str) -> User:
+    async def register(email: str, display_name: str, password: str, ip: str) -> User:
+        retry_after = await rate_limit(f"register:{ip}", REGISTER_LIMIT, REGISTER_WINDOW)
+        if retry_after:
+            raise RateLimited(retry_after)
+
         if await UserRepository.email_exists(email):
             raise Conflict(ErrorCode.EMAIL_TAKEN)
 

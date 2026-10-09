@@ -1,6 +1,6 @@
 import pytest
-from django.core.cache import cache
 
+from shared.redis import clear_rate_limit, get_redis_client
 from users.models import User
 
 # transaction=True: the view writes through sync_to_async on another DB connection, so the
@@ -9,12 +9,18 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 URL = "/api/core/v1/auth/register"
 VALID = {"email": "ana@example.com", "display_name": "Ana Pop", "password": "correct horse battery"}
+RATE_KEY = "register:127.0.0.1"  # the Django test client's REMOTE_ADDR
 
 
 @pytest.fixture(autouse=True)
-def clear_throttle():
-    # the throttle counts in the cache, which lives for the whole test run
-    cache.clear()
+async def redis_client():
+    # each test has its own event loop, so the cached client must not outlive the test
+    get_redis_client.cache_clear()
+    await clear_rate_limit(RATE_KEY)
+    yield
+    await clear_rate_limit(RATE_KEY)
+    await get_redis_client().aclose()
+    get_redis_client.cache_clear()
 
 
 async def register(client, body):
@@ -80,13 +86,13 @@ async def test_register_email_taken(async_client):
     assert response.json()["error"]["code"] == "email_taken"
 
 
-@pytest.mark.skip(reason="rate limit comes with the Redis rate limiter (CHAT-237)")
 async def test_register_rate_limited_after_10_per_hour(async_client):
-    # the throttle runs before validation, so empty bodies count too and skip password hashing
-    for _ in range(10):
-        assert (await register(async_client, {})).status_code == 400
+    # 1 created + 9 email_taken = 10 counted requests, with only one password hash
+    assert (await register(async_client, VALID)).status_code == 201
+    for _ in range(9):
+        assert (await register(async_client, VALID)).status_code == 409
 
-    response = await register(async_client, {})
+    response = await register(async_client, VALID)
 
     assert response.status_code == 429
     assert response.json()["error"]["code"] == "rate_limited"
