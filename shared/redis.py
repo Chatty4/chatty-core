@@ -35,3 +35,12 @@ async def clear_rate_limit(key: str) -> None:
         await get_redis_client().delete(key)
     except RedisError:
         logger.warning("Failed to clear rate limit key %s", key)
+
+
+async def is_rate_limited(key: str, limit: int) -> int:
+    """Returns seconds until reset if currently over limit, 0 otherwise. Does not increment."""
+    redis = get_redis_client()
+    count_str = await redis.get(key)
+    if count_str and int(count_str) > limit:
+        return max(await redis.ttl(key), 1)
+    return 0

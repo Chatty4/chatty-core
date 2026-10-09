@@ -16,6 +16,9 @@ class UserRepository:
         return await sync_to_async(User.objects.create_user)(email, display_name, password)
 
     @staticmethod
+    async def get_by_email(email: str) -> User | None:
+        return await User.objects.filter(email=email).afirst()
+
     async def deactivate_user(user_ids: list[UUID]) -> list[UUID]:
         """Deactivate the active users among user_ids and return their ids."""
         active = User.objects.filter(id__in=user_ids, is_active=True)
