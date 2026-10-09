@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "users",
+    "authn",
 ]
 
 MIDDLEWARE = [
@@ -93,6 +94,9 @@ DATABASES = {
 }
 
 REDIS_URL = env("REDIS_URL")
+JWT_PRIVATE_KEY_PATH = env("JWT_PRIVATE_KEY_PATH")
+JWT_ACCESS_TOKEN_LIFETIME = 900       # 15 min
+JWT_REFRESH_TOKEN_LIFETIME = 2592000  # 30 days
 
 
 # Password validation
