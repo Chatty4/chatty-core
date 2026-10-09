@@ -1,6 +1,6 @@
-from asgiref.sync import sync_to_async
 from uuid import UUID
 
+from asgiref.sync import sync_to_async
 from django.db import IntegrityError
 
 from authn.schemas import TokenPairSchema
