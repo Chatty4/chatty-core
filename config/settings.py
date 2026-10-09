@@ -102,9 +102,11 @@ REDIS_URL = env("REDIS_URL")
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
+        "OPTIONS": {"user_attributes": ["email", "display_name"]},
     },
     {
         "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 10},
     },
     {
         "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
