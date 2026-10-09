@@ -6,7 +6,7 @@ from rest_framework.response import Response
 
 from shared.codes import ErrorCode
 from shared.exceptions import NotFound
-from shared.views import AsyncAPIView
+from shared.views import AsyncAPIView, InternalAPIView
 
 
 class Ok(AsyncAPIView):
@@ -36,9 +36,15 @@ class Forbidden(AsyncAPIView):
         return Response({"ok": True})
 
 
+class Internal(InternalAPIView):
+    async def get(self, request):
+        return Response({"ok": True})
+
+
 urlpatterns = [
     path("ok", Ok.as_view()),
     path("missing", Missing.as_view()),
     path("crash", Crash.as_view()),
     path("forbidden", Forbidden.as_view()),
+    path("internal", Internal.as_view()),
 ]

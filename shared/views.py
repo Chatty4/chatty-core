@@ -5,6 +5,8 @@ from asgiref.sync import sync_to_async
 from django.http import HttpRequest, HttpResponseBase
 from rest_framework.views import APIView
 
+from shared.authentication import ServiceTokenAuthentication
+
 
 class AsyncAPIView(APIView):
     """DRF APIView with `async def` handlers.
@@ -34,3 +36,7 @@ class AsyncAPIView(APIView):
 
         self.response = self.finalize_response(drf_request, response, *args, **kwargs)
         return self.response
+
+
+class InternalAPIView(AsyncAPIView):
+    authentication_classes = [ServiceTokenAuthentication]

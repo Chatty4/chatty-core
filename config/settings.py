@@ -28,6 +28,7 @@ if (BASE_DIR / ".env").exists():
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env("SECRET_KEY")
+CORE_SERVICE_TOKEN = env("CORE_SERVICE_TOKEN")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool("DEBUG", default=False)
