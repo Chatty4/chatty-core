@@ -10,6 +10,7 @@ jobs:
     uses: Chatty4/.github/.github/workflows/python-ci.yml@dev
     with:
       needs-postgres: true
+      needs-redis: true
       test-env: |
         SECRET_KEY=ci-not-secret
         CORE_SERVICE_TOKEN=ci-not-secret
