@@ -24,7 +24,7 @@ class JWTAuthentication(BaseAuthentication):
 
         try:
             user_id = uuid.UUID(payload["sub"])
-        except (KeyError, ValueError):
+        except KeyError, ValueError:
             raise Unauthorized(ErrorCode.UNAUTHORIZED, "invalid token")
 
         user = UserRepository.get_by_id_sync(user_id)

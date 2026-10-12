@@ -37,7 +37,7 @@ class AuthnService:
         token = RefreshTokenRepository.get_by_hash_sync(token_hash)
         if token is None or token.revoked_at is not None or token.expires_at <= timezone.now():
             raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
-        
+
         if not token.user.is_active:
             raise UserInactive()
 
