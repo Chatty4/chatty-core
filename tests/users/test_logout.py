@@ -106,3 +106,37 @@ async def test_logout_missing_refresh_token_field(async_client, tokens):
 
     assert response.status_code == 400
     assert response.json()["error"]["fields"] == {"refresh_token": "required"}
+
+
+async def test_logout_other_users_token_returns_403(async_client, tokens):
+    """User B cannot revoke user A's refresh token; A's token must remain active."""
+    # tokens belongs to user A (the `user` fixture); create user B and log them in
+    user_b = await sync_to_async(User.objects.create_user)(
+        email="bob@example.com", display_name="Bob", password=PASSWORD
+    )
+    b_response = await async_client.post(
+        LOGIN_URL,
+        {"email": "bob@example.com", "password": PASSWORD},
+        content_type="application/json",
+    )
+    b_tokens = b_response.json()
+
+    response = await async_client.post(
+        LOGOUT_URL,
+        {"refresh_token": tokens["refresh_token"]},  # A's token
+        content_type="application/json",
+        headers={"Authorization": f"Bearer {b_tokens['access_token']}"},  # B's access
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+
+    # A's token must still be valid — refresh should succeed
+    refresh_response = await async_client.post(
+        "/api/core/v1/auth/refresh",
+        {"refresh_token": tokens["refresh_token"]},
+        content_type="application/json",
+    )
+    assert refresh_response.status_code == 200
+
+    await sync_to_async(user_b.delete)()

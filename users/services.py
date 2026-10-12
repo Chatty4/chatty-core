@@ -64,8 +64,8 @@ class UserService:
         return await AuthnService().refresh_tokens(refresh_token)
 
     @staticmethod
-    async def logout(refresh_token: str) -> None:
-        await AuthnService().revoke_refresh_token(refresh_token)
+    async def logout(refresh_token: str, user_id: UUID) -> None:
+        await AuthnService().revoke_refresh_token(refresh_token, str(user_id))
 
     @staticmethod
     async def deactivate(user_ids: list[UUID]) -> list[UUID]:
