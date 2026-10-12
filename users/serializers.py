@@ -1,3 +1,5 @@
+from zoneinfo import available_timezones
+
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
@@ -42,3 +44,25 @@ class TokenPairResponse(serializers.Serializer):
     expires_in = serializers.IntegerField()
     refresh_token = serializers.CharField()
     refresh_expires_in = serializers.IntegerField()
+
+
+class UpdateMeRequest(serializers.Serializer):
+    display_name = serializers.CharField(max_length=60)
+    timezone = serializers.CharField()
+    # shortcut: any UUID is accepted until files app exists
+    avatar_file_id = serializers.UUIDField(allow_null=True)
+
+    def validate_timezone(self, value: str) -> str:
+        if value not in available_timezones():
+            raise serializers.ValidationError("unknown timezone", code="invalid")
+        return value
+
+
+class MeResponse(UserResponse):
+    teams = serializers.SerializerMethodField()
+
+    class Meta(UserResponse.Meta):
+        fields = [*UserResponse.Meta.fields, "date_joined", "teams"]
+
+    def get_teams(self, user: User) -> list:
+        return []  # shortcut: no teams app yet, fill in when the Team model lands.

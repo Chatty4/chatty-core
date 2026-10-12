@@ -3,6 +3,7 @@ from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.http import HttpRequest, HttpResponseBase
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from shared.authentication import ServiceTokenAuthentication
@@ -40,3 +41,7 @@ class AsyncAPIView(APIView):
 
 class InternalAPIView(AsyncAPIView):
     authentication_classes = [ServiceTokenAuthentication]
+
+
+class UserAPIView(AsyncAPIView):
+    permission_classes = [IsAuthenticated]

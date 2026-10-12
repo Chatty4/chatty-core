@@ -61,3 +61,9 @@ class UserService:
     async def deactivate(user_ids: list[UUID]) -> list[UUID]:
         """no user.deactivated event yet. CHAT-172 publishes it here with transaction.on_commit"""
         return await UserRepository.deactivate_user(user_ids)
+
+    @staticmethod
+    async def update_profile(
+        user: User, display_name: str, timezone: str, avatar_file_id: UUID | None
+    ) -> User:
+        return await UserRepository.update_profile(user, display_name, timezone, avatar_file_id)
