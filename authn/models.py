@@ -11,6 +11,7 @@ class RefreshToken(models.Model):
         on_delete=models.CASCADE,
         related_name="refresh_tokens",
     )
+    user_id: uuid.UUID
     token_hash = models.CharField(max_length=64, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()

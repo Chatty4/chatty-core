@@ -4,10 +4,10 @@ from shared.serializers import validated
 from shared.views import AsyncAPIView, UserAPIView
 from users.serializers import (
     LoginRequest,
-    LogoutRequest,
     MeResponse,
     RegisterRequest,
     TokenPairResponse,
+    TokenRequest,
     UpdateMeRequest,
     UserResponse,
 )
@@ -28,9 +28,16 @@ class LoginView(AsyncAPIView):
         return Response(TokenPairResponse(tokens).data)
 
 
+class RefreshTokenView(AsyncAPIView):
+    async def post(self, request):
+        data = validated(TokenRequest, request.data)
+        tokens = await UserService.refresh_token(**data)
+        return Response(TokenPairResponse(tokens).data)
+
+
 class LogoutView(UserAPIView):
     async def post(self, request):
-        data = validated(LogoutRequest, request.data)
+        data = validated(TokenRequest, request.data)
         await UserService.logout(**data)
         return Response(status=204)
 

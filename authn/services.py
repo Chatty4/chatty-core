@@ -6,6 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import jwt
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -13,7 +14,7 @@ from django.utils import timezone
 from authn.repository import RefreshTokenRepository
 from authn.schemas import TokenPairSchema
 from shared.codes import ErrorCode
-from shared.exceptions import Unauthorized
+from shared.exceptions import Unauthorized, UserInactive
 from users.models import User
 
 
@@ -31,6 +32,20 @@ class AuthnService:
     def __init__(self) -> None:
         self.repo = RefreshTokenRepository()
 
+    @transaction.atomic
+    def _rotate_sync(self, token_hash: str, new_hash: str, new_expires_at: datetime) -> str:
+        token = RefreshTokenRepository.get_by_hash_sync(token_hash)
+        if token is None or token.revoked_at is not None or token.expires_at <= timezone.now():
+            raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
+        
+        if not token.user.is_active:
+            raise UserInactive()
+
+        RefreshTokenRepository.revoke_sync(token)
+        RefreshTokenRepository.create_sync(str(token.user_id), new_hash, new_expires_at)
+
+        return str(token.user_id)
+
     async def issue_tokens(self, user: User) -> TokenPairSchema:
         """Create a new access + refresh token pair for the given user."""
         raw, token_hash, expires_at = self._new_refresh_token()
@@ -40,17 +55,12 @@ class AuthnService:
     async def refresh_tokens(self, raw_token: str) -> TokenPairSchema:
         """Rotate a refresh token: revoke the old one and issue a new pair. Raises Unauthorized if
         the token is missing, revoked, or expired."""
-        token = await self.repo.get_by_hash(hashlib.sha256(raw_token.encode()).hexdigest())
-
-        if token is None or token.revoked_at is not None or token.expires_at <= timezone.now():
-            raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
-
         new_raw, new_hash, new_expires_at = self._new_refresh_token()
-        async with transaction.atomic():
-            await self.repo.revoke(token)
-            await self.repo.create(str(token.user_id), new_hash, new_expires_at)
 
-        return self._build_token_pair(str(token.user_id), new_raw)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        user_id = await sync_to_async(self._rotate_sync)(token_hash, new_hash, new_expires_at)
+
+        return self._build_token_pair(user_id, new_raw)
 
     async def revoke_refresh_token(self, raw_token: str) -> None:
         """Revoke a single refresh token. No-op if already revoked or not found."""

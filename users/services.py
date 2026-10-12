@@ -58,6 +58,10 @@ class UserService:
         return await AuthnService().issue_tokens(user)
 
     @staticmethod
+    async def refresh_token(refresh_token: str) -> TokenPairSchema:
+        return await AuthnService().refresh_tokens(refresh_token)
+
+    @staticmethod
     async def logout(refresh_token: str) -> None:
         await AuthnService().revoke_refresh_token(refresh_token)
 
