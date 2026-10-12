@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
+from django.contrib.auth.hashers import make_password
 
 from users.models import User
 
@@ -12,8 +13,12 @@ class UserRepository:
 
     @staticmethod
     async def create_user(email: str, display_name: str, password: str) -> User:
-        # create_user is sync (save + password hashing), so it runs in the sync thread
-        return await sync_to_async(User.objects.create_user)(email, display_name, password)
+        hashed = await sync_to_async(make_password, thread_sensitive=False)(password)
+        return await User.objects.acreate(
+            email=User.objects.normalize_email(email).lower(),
+            display_name=display_name,
+            password=hashed,
+        )
 
     @staticmethod
     async def get_by_email(email: str) -> User | None:
@@ -45,5 +50,5 @@ class UserRepository:
 
     @staticmethod
     async def set_password(user: User, password: str) -> None:
-        await sync_to_async(user.set_password)(password)
+        await sync_to_async(user.set_password, thread_sensitive=False)(password)
         await user.asave(update_fields=["password"])

@@ -42,7 +42,9 @@ class UserService:
 
         user = await UserRepository.get_by_email(email)
 
-        if user is None or not await sync_to_async(user.check_password)(password):
+        if user is None or not await sync_to_async(user.check_password, thread_sensitive=False)(
+            password
+        ):
             retry_after = 0
             for key in (f"login_fail:{email}", f"login_fail:{ip}"):
                 retry_after = retry_after or await rate_limit(
@@ -80,7 +82,7 @@ class UserService:
     async def change_password(
         user: User, old_password: str, new_password: str, refresh_token: str
     ) -> None:
-        if not await sync_to_async(user.check_password)(old_password):
+        if not await sync_to_async(user.check_password, thread_sensitive=False)(old_password):
             raise BadRequest(ErrorCode.WRONG_PASSWORD)
 
         # Revoke first: if saving the password fails, other devices are only logged out,
