@@ -38,7 +38,8 @@ class RefreshTokenRepository:
         token.revoked_at = timezone.now()
         token.save(update_fields=["revoked_at"])
 
-    async def revoke_all_for_user(self, user_id: str) -> None:
-        await RefreshToken.objects.filter(user_id=user_id, revoked_at__isnull=True).aupdate(
-            revoked_at=timezone.now()
-        )
+    async def revoke_all_for_user(self, user_id: str, except_hash: str | None = None) -> None:
+        tokens = RefreshToken.objects.filter(user_id=user_id, revoked_at__isnull=True)
+        if except_hash:
+            tokens = tokens.exclude(token_hash=except_hash)
+        await tokens.aupdate(revoked_at=timezone.now())

@@ -42,3 +42,8 @@ class UserRepository:
         await user.asave(update_fields=["display_name", "timezone", "avatar_id"])
 
         return user
+
+    @staticmethod
+    async def set_password(user: User, password: str) -> None:
+        await sync_to_async(user.set_password)(password)
+        await user.asave(update_fields=["password"])

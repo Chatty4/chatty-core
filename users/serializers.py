@@ -70,3 +70,20 @@ class MeResponse(UserResponse):
 
     def get_teams(self, user: User) -> list:
         return []  # shortcut: no teams app yet, fill in when the Team model lands.
+
+
+class ChangePasswordRequest(serializers.Serializer):
+    old_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+    refresh_token = serializers.CharField()
+
+    def validate(self, attrs: dict) -> dict:
+        if attrs["new_password"] == attrs["old_password"]:
+            raise serializers.ValidationError(
+                {"new_password": "must differ from the old password"}, code="invalid"
+            )
+        try:
+            validate_password(attrs["new_password"], self.context["user"])
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"new_password": get_error_detail(exc)})
+        return attrs

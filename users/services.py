@@ -6,7 +6,7 @@ from django.db import IntegrityError
 from authn.schemas import TokenPairSchema
 from authn.services import AuthnService
 from shared.codes import ErrorCode
-from shared.exceptions import Conflict, RateLimited, Unauthorized, UserInactive
+from shared.exceptions import BadRequest, Conflict, RateLimited, Unauthorized, UserInactive
 from shared.redis import is_rate_limited, rate_limit
 from users.models import User
 from users.repositories import UserRepository
@@ -75,3 +75,15 @@ class UserService:
         user: User, display_name: str, timezone: str, avatar_file_id: UUID | None
     ) -> User:
         return await UserRepository.update_profile(user, display_name, timezone, avatar_file_id)
+
+    @staticmethod
+    async def change_password(
+        user: User, old_password: str, new_password: str, refresh_token: str
+    ) -> None:
+        if not await sync_to_async(user.check_password)(old_password):
+            raise BadRequest(ErrorCode.WRONG_PASSWORD)
+
+        # Revoke first: if saving the password fails, other devices are only logged out,
+        # never left logged in after a password change.
+        await AuthnService().revoke_all_tokens(str(user.id), keep_raw_token=refresh_token)
+        await UserRepository.set_password(user, new_password)

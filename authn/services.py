@@ -69,9 +69,10 @@ class AuthnService:
             return
         await self.repo.revoke(token)
 
-    async def revoke_all_tokens(self, user_id: str) -> None:
-        """Revoke all active refresh tokens for a user (e.g. on logout from all devices)."""
-        await self.repo.revoke_all_for_user(user_id)
+    async def revoke_all_tokens(self, user_id: str, keep_raw_token: str | None = None) -> None:
+        """Revoke all active refresh tokens for a user, except keep_raw_token (this device)."""
+        keep_hash = hashlib.sha256(keep_raw_token.encode()).hexdigest() if keep_raw_token else None
+        await self.repo.revoke_all_for_user(user_id, except_hash=keep_hash)
 
     @staticmethod
     def decode_access_token(token: str) -> dict:
