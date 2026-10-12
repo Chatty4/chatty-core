@@ -1,82 +1,81 @@
 # chatty-core
 
-Django service for Chatty: users, teams, invites, channels, memberships and file uploads.
+Django service for Chatty: users and auth today; teams, channels and files next.
+Python 3.14 · Django 6.1 · DRF (async) · Postgres 17 · Redis · uvicorn.
 
-- Public API: `/api/core/v1` (contract: `chatty-infra/docs/api-core.md`)
-- Internal API for chatty-chat: `/internal` (contract: `chatty-infra/docs/api-internal.md`)
-- Health check: `GET /health`
+Contracts live in `chatty-infra/docs`: `api-core.md` (public), `api-internal.md` (`/internal`).
 
-Stack: Python 3.14, Django 6.1, Django REST Framework (async views), Postgres 17, uvicorn (ASGI).
+## Quick start (about 10 min)
 
-## Requirements
+Run from `chatty-core` in PowerShell:
 
-- Python 3.14
-- Docker, with the infra from `chatty-infra` running (Postgres, Redis, MinIO, Kafka)
+1. Start the infra:
+   ```bash
+   docker compose -f ../chatty-infra/docker-compose.yml up -d
+   ```
+2. Install:
+   ```bash
+   python -m venv .venv; .venv\Scripts\Activate.ps1; pip install -r requirements.txt
+   ```
+3. Create `.env`, then set `SECRET_KEY` in it:
+   ```bash
+   cp .env.example .env
+   ```
+4. Create the JWT keys and give chatty-chat the public one:
+   ```bash
+   docker run --rm -v ${PWD}/keys:/keys alpine/openssl genrsa -out /keys/jwt_private.pem 2048
+   docker run --rm -v ${PWD}/keys:/keys alpine/openssl rsa -in /keys/jwt_private.pem -pubout -out /keys/jwt_public.pem
+   mkdir ../chatty-chat/keys; cp keys/jwt_public.pem ../chatty-chat/keys/
+   ```
+5. Create the tables:
+   ```bash
+   python manage.py migrate
+   ```
+6. Run:
+   ```bash
+   uvicorn config.asgi:application --reload
+   ```
 
-## Setup
+Done when `curl http://127.0.0.1:8000/health` returns `{"status": "ok", "db": "ok", "redis": "ok"}`.
 
-```bash
-# 1. Start the infra
-docker compose -f ../chatty-infra/docker-compose.yml up -d
+## Endpoints that work
 
-# 2. Create the virtual environment and install the packages
-python -m venv .venv
-.venv\Scripts\Activate.ps1          # Windows PowerShell
-pip install -r requirements.txt
+All under `/api/core/v1`. 🔒 = needs `Authorization: Bearer <access_token>`.
 
-# 3. Create your .env and set a SECRET_KEY
-cp .env.example .env
-python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
-```
+| Endpoint | What it does |
+|---|---|
+| `POST auth/register` | Create an account (10 per hour per IP) |
+| `POST auth/login` | Get tokens (5 failures per 15 min, per email and per IP) |
+| `POST auth/refresh` | New token pair; the old refresh token stops working |
+| 🔒 `POST auth/logout` | Revoke this device's refresh token |
+| 🔒 `POST auth/password` | Change password; logs out all other devices |
+| 🔒 `GET me` / `PUT me` | View or edit my profile (`teams` is `[]` for now) |
 
-Use `127.0.0.1` in `.env` URLs, not `localhost` (Docker publishes the infra ports on IPv4 only).
+Not built yet: teams, invites, channels, files, `/internal`.
 
-## JWT keys
+## Daily commands
 
-Generate the RS256 key pair once per environment (requires Docker):
+| Task | Command |
+|---|---|
+| Run in Docker instead | `docker compose -f ../chatty-infra/docker-compose.yml up -d core` |
+| Test | `pytest` |
+| Lint and format | `ruff check . && ruff format .` |
+| Admin user | `python manage.py createsuperuser`, then open `/admin/` |
+| New migration | `python manage.py makemigrations && python manage.py migrate` |
 
-```bash
-docker run --rm -v ${PWD}/keys:/keys alpine/openssl genrsa -out /keys/jwt_private.pem 2048
-docker run --rm -v ${PWD}/keys:/keys alpine/openssl rsa -in /keys/jwt_private.pem -pubout -out /keys/jwt_public.pem
-```
+## When something breaks
 
-## Run
+| You see | Fix |
+|---|---|
+| `Set the ... environment variable` | A variable is missing: compare `.env` with `.env.example` |
+| `401` with a token that worked before | Keys changed: log in again |
+| `429 rate_limited` while testing | `docker exec chatty-redis redis-cli --scan --pattern "login_fail:*"`, then `redis-cli DEL <key>` |
+| Can't reach the DB or Redis | Use `127.0.0.1` in `.env`, never `localhost` (IPv6 stall on Windows) |
+| Login takes ~1 s | Expected: password hashing is slow on purpose |
 
-```bash
-uvicorn config.asgi:application --reload
-```
+## Rules
 
-Check it: `curl http://127.0.0.1:8000/health` returns `{"status": "ok", "db": "ok"}`.
-
-## Tests
-
-```bash
-pytest
-```
-
-Tests run against the Postgres container. pytest-django creates a `test_core_db` database and drops it at the end.
-
-## Lint and format
-
-```bash
-ruff check .
-ruff format .
-```
-
-## Docker
-
-```bash
-docker build -t chatty-core .
-docker run --rm -p 8000:8000 --network chatty_default \
-  -e SECRET_KEY=change-me \
-  -e ALLOWED_HOSTS=127.0.0.1,localhost \
-  -e DATABASE_URL=postgres://core_user:core_pass@core-db:5432/core_db \
-  chatty-core
-```
-
-The container joins the infra network (`chatty_default`), so it reaches Postgres as `core-db`, not `127.0.0.1`.
-
-## Contributing
-
-Read `CLAUDE.md` for the architecture, async rules and conventions. One Jira ticket per branch and PR
-(`CHAT-<n>/<short-name>`), and `ruff check`, `ruff format --check` and `pytest` must pass before you push.
+- Never commit `.env` or `keys/`.
+- One Jira ticket per branch: `CHAT-<n>/<short-name>`.
+- `ruff check`, `ruff format --check` and `pytest` pass before you push.
+- Architecture, async rules and conventions: `CLAUDE.md`.
