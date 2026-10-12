@@ -22,6 +22,11 @@ def _private_key() -> str:
     return Path(settings.JWT_PRIVATE_KEY_PATH).read_text()
 
 
+@lru_cache(maxsize=1)
+def _public_key() -> str:
+    return Path(settings.JWT_PUBLIC_KEY_PATH).read_text()
+
+
 class AuthnService:
     def __init__(self) -> None:
         self.repo = RefreshTokenRepository()
@@ -57,6 +62,16 @@ class AuthnService:
     async def revoke_all_tokens(self, user_id: str) -> None:
         """Revoke all active refresh tokens for a user (e.g. on logout from all devices)."""
         await self.repo.revoke_all_for_user(user_id)
+
+    @staticmethod
+    def decode_access_token(token: str) -> dict:
+        """Decode and verify an RS256 access token. Raises Unauthorized on failure."""
+        try:
+            return jwt.decode(token, _public_key(), algorithms=["RS256"])
+        except jwt.ExpiredSignatureError:
+            raise Unauthorized(ErrorCode.UNAUTHORIZED, "token expired")
+        except jwt.InvalidTokenError:
+            raise Unauthorized(ErrorCode.UNAUTHORIZED, "invalid token")
 
     @staticmethod
     def _new_refresh_token() -> tuple[str, str, datetime]:
