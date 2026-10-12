@@ -41,9 +41,8 @@ class UserService:
                 raise RateLimited(retry_after)
 
         user = await UserRepository.get_by_email(email)
-        valid = user is not None and await sync_to_async(user.check_password)(password)
 
-        if not valid:
+        if user is None or not await sync_to_async(user.check_password)(password):
             retry_after = 0
             for key in (f"login_fail:{email}", f"login_fail:{ip}"):
                 retry_after = retry_after or await rate_limit(
