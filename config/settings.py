@@ -96,6 +96,7 @@ DATABASES = {
 
 REDIS_URL = env("REDIS_URL")
 JWT_PRIVATE_KEY_PATH = env("JWT_PRIVATE_KEY_PATH")
+JWT_PUBLIC_KEY_PATH = env("JWT_PUBLIC_KEY_PATH")
 JWT_ACCESS_TOKEN_LIFETIME = 900  # 15 min
 JWT_REFRESH_TOKEN_LIFETIME = 2592000  # 30 days
 
@@ -151,8 +152,9 @@ MAILERS = {
 REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "shared.exception_handler.exception_handler",
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
-    # JWT authentication is added with CHAT-148 (shared/authentication.py).
-    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "shared.authentication.JWTAuthentication",
+    ],
 }
 
 LOGGING = {

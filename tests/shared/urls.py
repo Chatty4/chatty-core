@@ -30,6 +30,7 @@ class Deny(BasePermission):
 
 
 class Forbidden(AsyncAPIView):
+    authentication_classes = []
     permission_classes = [Deny]
 
     async def get(self, request):
