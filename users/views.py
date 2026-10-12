@@ -1,7 +1,7 @@
 from rest_framework.response import Response
 
 from shared.serializers import validated
-from shared.views import AsyncAPIView
+from shared.views import AsyncAPIView, UserAPIView
 from users.serializers import (
     LoginRequest,
     MeResponse,
@@ -27,9 +27,7 @@ class LoginView(AsyncAPIView):
         return Response(TokenPairResponse(tokens).data)
 
 
-class MeView(AsyncAPIView):
-    authentication_classes = []
-
+class MeView(UserAPIView):
     async def get(self, request):
         return Response(MeResponse(request.user).data)
 
