@@ -8,6 +8,7 @@ from users.serializers import (
     MeResponse,
     RegisterRequest,
     TokenPairResponse,
+    TokenRequest,
     UpdateMeRequest,
     UserResponse,
 )
@@ -26,6 +27,20 @@ class LoginView(AsyncAPIView):
         data = validated(LoginRequest, request.data)
         tokens = await UserService.login(**data, ip=request.META["REMOTE_ADDR"])
         return Response(TokenPairResponse(tokens).data)
+
+
+class RefreshTokenView(AsyncAPIView):
+    async def post(self, request):
+        data = validated(TokenRequest, request.data)
+        tokens = await UserService.refresh_token(**data)
+        return Response(TokenPairResponse(tokens).data)
+
+
+class LogoutView(UserAPIView):
+    async def post(self, request):
+        data = validated(TokenRequest, request.data)
+        await UserService.logout(**data)
+        return Response(status=204)
 
 
 class MeView(UserAPIView):

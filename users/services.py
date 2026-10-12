@@ -58,6 +58,14 @@ class UserService:
         return await AuthnService().issue_tokens(user)
 
     @staticmethod
+    async def refresh_token(refresh_token: str) -> TokenPairSchema:
+        return await AuthnService().refresh_tokens(refresh_token)
+
+    @staticmethod
+    async def logout(refresh_token: str) -> None:
+        await AuthnService().revoke_refresh_token(refresh_token)
+
+    @staticmethod
     async def deactivate(user_ids: list[UUID]) -> list[UUID]:
         """no user.deactivated event yet. CHAT-172 publishes it here with transaction.on_commit"""
         return await UserRepository.deactivate_user(user_ids)
