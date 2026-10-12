@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from shared.serializers import validated
 from shared.views import AsyncAPIView, UserAPIView
 from users.serializers import (
+    ChangePasswordRequest,
     LoginRequest,
     MeResponse,
     RegisterRequest,
@@ -36,3 +37,11 @@ class MeView(UserAPIView):
         user = await UserService.update_profile(request.user, **data)
 
         return Response(MeResponse(user).data)
+
+
+class ChangePasswordView(UserAPIView):
+    async def post(self, request):
+        data = validated(ChangePasswordRequest, request.data, context={"user": request.user})
+        await UserService.change_password(request.user, **data)
+
+        return Response(status=204)

@@ -9,3 +9,9 @@ async def close_thread_db_connections():
     # client never closes it, and an open connection stops pytest from dropping the test database.
     yield
     await sync_to_async(connections.close_all)()
+
+
+@pytest.fixture(autouse=True)
+def fast_password_hasher(settings):
+    # Django's default PBKDF2 takes ~1s per hash; tests don't need real hashing strength.
+    settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
