@@ -4,6 +4,7 @@ from shared.serializers import validated
 from shared.views import AsyncAPIView, UserAPIView
 from users.serializers import (
     LoginRequest,
+    LogoutRequest,
     MeResponse,
     RegisterRequest,
     TokenPairResponse,
@@ -25,6 +26,13 @@ class LoginView(AsyncAPIView):
         data = validated(LoginRequest, request.data)
         tokens = await UserService.login(**data, ip=request.META["REMOTE_ADDR"])
         return Response(TokenPairResponse(tokens).data)
+
+
+class LogoutView(UserAPIView):
+    async def post(self, request):
+        data = validated(LogoutRequest, request.data)
+        await UserService.logout(**data)
+        return Response(status=204)
 
 
 class MeView(UserAPIView):

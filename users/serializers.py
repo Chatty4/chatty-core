@@ -46,6 +46,10 @@ class TokenPairResponse(serializers.Serializer):
     refresh_expires_in = serializers.IntegerField()
 
 
+class LogoutRequest(serializers.Serializer):
+    refresh_token = serializers.CharField()
+
+
 class UpdateMeRequest(serializers.Serializer):
     display_name = serializers.CharField(max_length=60)
     timezone = serializers.CharField()
