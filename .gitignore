@@ -223,3 +223,6 @@ __marimo__/
 .streamlit/secrets.toml
 
 .vscode
+
+# Performance benchmarks — not part of the test suite
+perf/

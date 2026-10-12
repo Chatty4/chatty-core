@@ -39,7 +39,7 @@ class RefreshTokenView(AsyncAPIView):
 class LogoutView(UserAPIView):
     async def post(self, request):
         data = validated(TokenRequest, request.data)
-        await UserService.logout(**data)
+        await UserService.logout(**data, user_id=request.user.id)
         return Response(status=204)
 
 

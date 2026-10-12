@@ -14,7 +14,7 @@ from django.utils import timezone
 from authn.repository import RefreshTokenRepository
 from authn.schemas import TokenPairSchema
 from shared.codes import ErrorCode
-from shared.exceptions import Unauthorized, UserInactive
+from shared.exceptions import PermissionDenied, Unauthorized, UserInactive
 from users.models import User
 
 
@@ -62,11 +62,16 @@ class AuthnService:
 
         return self._build_token_pair(user_id, new_raw)
 
-    async def revoke_refresh_token(self, raw_token: str) -> None:
-        """Revoke a single refresh token. No-op if already revoked or not found."""
+    async def revoke_refresh_token(self, raw_token: str, user_id: str) -> None:
+        """Revoke a single refresh token owned by user_id.
+        Raises PermissionDenied if the token belongs to a different user.
+        No-op if already revoked or not found (contract).
+        """
         token = await self.repo.get_by_hash(hashlib.sha256(raw_token.encode()).hexdigest())
         if token is None or token.revoked_at is not None:
             return
+        if str(token.user_id) != user_id:
+            raise PermissionDenied(ErrorCode.FORBIDDEN)
         await self.repo.revoke(token)
 
     async def revoke_all_tokens(self, user_id: str, keep_raw_token: str | None = None) -> None:
