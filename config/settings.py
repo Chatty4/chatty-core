@@ -95,6 +95,8 @@ DATABASES = {
 }
 
 REDIS_URL = env("REDIS_URL")
+# True only when every request comes through our Nginx, which sets X-Real-IP (D-09).
+BEHIND_PROXY = env.bool("BEHIND_PROXY", default=False)
 JWT_PRIVATE_KEY_PATH = env("JWT_PRIVATE_KEY_PATH")
 JWT_PUBLIC_KEY_PATH = env("JWT_PUBLIC_KEY_PATH")
 JWT_ACCESS_TOKEN_LIFETIME = 900  # 15 min
