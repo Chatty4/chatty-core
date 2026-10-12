@@ -17,5 +17,12 @@ jobs:
         JWT_PRIVATE_KEY_PATH=keys/jwt_private.pem
         ALLOWED_HOSTS=127.0.0.1
       pre-test-commands: |
+        mkdir -p keys
+        python -c "
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.hazmat.primitives import serialization
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        open('keys/jwt_private.pem', 'wb').write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL, serialization.NoEncryption()))
+        "
         python manage.py check
         python manage.py makemigrations --check --dry-run
