@@ -31,3 +31,14 @@ class UserRepository:
         await User.objects.filter(id__in=ids).aupdate(is_active=False)
 
         return ids
+
+    @staticmethod
+    async def update_profile(
+        user: User, display_name: str, timezone: str, avatar_id: UUID | None
+    ) -> User:
+        user.display_name = display_name
+        user.timezone = timezone
+        user.avatar_id = avatar_id
+        await user.asave(update_fields=["display_name", "timezone", "avatar_id"])
+
+        return user

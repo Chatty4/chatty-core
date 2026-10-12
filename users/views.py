@@ -2,7 +2,14 @@ from rest_framework.response import Response
 
 from shared.serializers import validated
 from shared.views import AsyncAPIView
-from users.serializers import LoginRequest, RegisterRequest, TokenPairResponse, UserResponse
+from users.serializers import (
+    LoginRequest,
+    MeResponse,
+    RegisterRequest,
+    TokenPairResponse,
+    UpdateMeRequest,
+    UserResponse,
+)
 from users.services import UserService
 
 
@@ -18,3 +25,16 @@ class LoginView(AsyncAPIView):
         data = validated(LoginRequest, request.data)
         tokens = await UserService.login(**data, ip=request.META["REMOTE_ADDR"])
         return Response(TokenPairResponse(tokens).data)
+
+
+class MeView(AsyncAPIView):
+    authentication_classes = []
+
+    async def get(self, request):
+        return Response(MeResponse(request.user).data)
+
+    async def put(self, request):
+        data = validated(UpdateMeRequest, request.data)
+        user = await UserService.update_profile(request.user, **data)
+
+        return Response(MeResponse(user).data)
