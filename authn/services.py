@@ -28,10 +28,11 @@ def _public_key() -> str:
     return Path(settings.JWT_PUBLIC_KEY_PATH).read_text()
 
 
-class AuthnService:
-    def __init__(self) -> None:
-        self.repo = RefreshTokenRepository()
+def _hash_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()
 
+
+class AuthnService:
     @transaction.atomic
     def _rotate_sync(
         self, token_hash: str, new_hash: str, new_expires_at: datetime
@@ -57,7 +58,7 @@ class AuthnService:
     async def issue_tokens(self, user: User) -> TokenPairSchema:
         """Create a new access + refresh token pair for the given user."""
         raw, token_hash, expires_at = self._new_refresh_token()
-        await self.repo.create(str(user.id), token_hash, expires_at)
+        await RefreshTokenRepository.create(str(user.id), token_hash, expires_at)
         return self._build_token_pair(str(user.id), raw)
 
     async def refresh_tokens(self, raw_token: str) -> TokenPairSchema:
@@ -65,13 +66,13 @@ class AuthnService:
         the token is missing, revoked, or expired."""
         new_raw, new_hash, new_expires_at = self._new_refresh_token()
 
-        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        token_hash = _hash_token(raw_token)
         user_id, reuse = await sync_to_async(self._rotate_sync)(
             token_hash, new_hash, new_expires_at
         )
 
         if reuse:
-            await self.repo.revoke_all_for_user(user_id)
+            await RefreshTokenRepository.revoke_all_for_user(user_id)
             raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
 
         return self._build_token_pair(user_id, new_raw)
@@ -81,19 +82,19 @@ class AuthnService:
         Raises PermissionDenied if the token belongs to a different user.
         No-op if already revoked or not found (contract).
         """
-        token = await self.repo.get_by_hash(hashlib.sha256(raw_token.encode()).hexdigest())
+        token = await RefreshTokenRepository.get_by_hash(_hash_token(raw_token))
         if token is None:
             return
         if str(token.user_id) != user_id:
             raise PermissionDenied(ErrorCode.FORBIDDEN)
         if token.revoked_at is not None:
             return
-        await self.repo.revoke(token)
+        await RefreshTokenRepository.revoke(token)
 
     async def revoke_all_tokens(self, user_id: str, keep_raw_token: str | None = None) -> None:
         """Revoke all active refresh tokens for a user, except keep_raw_token (this device)."""
-        keep_hash = hashlib.sha256(keep_raw_token.encode()).hexdigest() if keep_raw_token else None
-        await self.repo.revoke_all_for_user(user_id, except_hash=keep_hash)
+        keep_hash = _hash_token(keep_raw_token) if keep_raw_token else None
+        await RefreshTokenRepository.revoke_all_for_user(user_id, except_hash=keep_hash)
 
     @staticmethod
     def decode_access_token(token: str) -> dict:
@@ -109,7 +110,7 @@ class AuthnService:
     def _new_refresh_token() -> tuple[str, str, datetime]:
         raw = "rt_" + secrets.token_hex(32)
         expires_at = timezone.now() + timedelta(seconds=settings.JWT_REFRESH_TOKEN_LIFETIME)
-        return raw, hashlib.sha256(raw.encode()).hexdigest(), expires_at
+        return raw, _hash_token(raw), expires_at
 
     def _build_token_pair(self, user_id: str, raw_refresh: str) -> TokenPairSchema:
         return TokenPairSchema(

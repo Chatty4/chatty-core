@@ -4,6 +4,7 @@ from io import StringIO
 import pytest
 from asgiref.sync import sync_to_async
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.utils import timezone
 
 from authn.models import RefreshToken
@@ -83,11 +84,9 @@ def test_dry_run_does_not_delete(user_sync):
     assert "Would delete 1 rows" in out.getvalue()
 
 
-def test_invalid_days_writes_to_stderr(user_sync):
-    err = StringIO()
-    call_command("purge_refresh_tokens", "--days=0", stderr=err)
-
-    assert "--days must be >= 1" in err.getvalue()
+def test_invalid_days_raises_command_error(user_sync):
+    with pytest.raises(CommandError, match="--days must be >= 1"):
+        call_command("purge_refresh_tokens", "--days=0")
 
 
 def test_deleted_count_is_reported(user_sync):

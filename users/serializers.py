@@ -7,6 +7,8 @@ from rest_framework.fields import get_error_detail
 
 from users.models import User
 
+_VALID_TIMEZONES = available_timezones()
+
 
 class RegisterRequest(serializers.Serializer):
     email = serializers.EmailField()
@@ -52,6 +54,10 @@ class TokenPairResponse(serializers.Serializer):
     refresh_expires_in = serializers.IntegerField()
 
 
+class LoginResponse(TokenPairResponse):
+    user = UserResponse()
+
+
 class TokenRequest(serializers.Serializer):
     refresh_token = serializers.CharField()
 
@@ -63,7 +69,7 @@ class UpdateMeRequest(serializers.Serializer):
     avatar_file_id = serializers.UUIDField(allow_null=True)
 
     def validate_timezone(self, value: str) -> str:
-        if value not in available_timezones():
+        if value not in _VALID_TIMEZONES:
             raise serializers.ValidationError("unknown timezone", code="invalid")
         return value
 

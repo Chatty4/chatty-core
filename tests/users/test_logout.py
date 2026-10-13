@@ -1,3 +1,5 @@
+import hashlib
+
 import pytest
 from asgiref.sync import sync_to_async
 
@@ -50,7 +52,8 @@ async def test_logout_revokes_refresh_token(async_client, tokens):
     )
 
     assert response.status_code == 204
-    token = await RefreshToken.objects.filter(token_hash__isnull=False).afirst()
+    token_hash = hashlib.sha256(refresh.encode()).hexdigest()
+    token = await RefreshToken.objects.filter(token_hash=token_hash).afirst()
     assert token is not None
     assert token.revoked_at is not None
 

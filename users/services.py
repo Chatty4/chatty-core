@@ -7,7 +7,7 @@ from authn.schemas import TokenPairSchema
 from authn.services import AuthnService
 from shared.codes import ErrorCode
 from shared.exceptions import BadRequest, Conflict, RateLimited, Unauthorized, UserInactive
-from shared.redis import is_rate_limited, rate_limit
+from shared.redis import clear_rate_limit, is_rate_limited, rate_limit
 from users.models import User
 from users.repositories import UserRepository
 
@@ -37,26 +37,36 @@ class UserService:
             raise Conflict(ErrorCode.EMAIL_TAKEN)
 
     @staticmethod
-    async def login(email: str, password: str, ip: str) -> TokenPairSchema:
-        for key in (f"login_fail:{email}", f"login_fail:{ip}"):
+    async def login(email: str, password: str, ip: str) -> tuple[TokenPairSchema, User]:
+        fail_keys = (f"login_fail:{email}", f"login_fail:{ip}")
+        for key in fail_keys:
             retry_after = await is_rate_limited(key, LOGIN_FAIL_LIMIT)
             if retry_after:
                 raise RateLimited(retry_after)
 
         user = await UserRepository.get_by_email(email)
 
+        # Parallel wrong guesses would all pass the pre-check at count=0 and then
+        # spend ~1.2 s hashing concurrently. Incrementing first means requests
+        # beyond the limit are rejected before any hash work starts.
+        retry_after = 0
+        for key in fail_keys:
+            retry_after = retry_after or await rate_limit(key, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW)
+
         # Unknown email: spend ~1.2 s on a dummy hash to prevent timing-based
         # account enumeration
         if user is None:
             await sync_to_async(User().set_password, thread_sensitive=False)(password)
-        elif await sync_to_async(user.check_password, thread_sensitive=False)(password):
-            if not user.is_active:
-                raise UserInactive()
-            return await AuthnService().issue_tokens(user)
+        elif not user.is_active:
+            # Run the hash anyway so response time doesn't reveal password correctness
+            await user.acheck_password(password)
+            raise UserInactive()
+        elif await user.acheck_password(password):
+            for key in fail_keys:
+                await clear_rate_limit(key)
+            tokens = await AuthnService().issue_tokens(user)
+            return tokens, user
 
-        retry_after = 0
-        for key in (f"login_fail:{email}", f"login_fail:{ip}"):
-            retry_after = retry_after or await rate_limit(key, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW)
         if retry_after:
             raise RateLimited(retry_after)
         raise Unauthorized(ErrorCode.INVALID_CREDENTIALS)
@@ -89,11 +99,13 @@ class UserService:
         if retry_after:
             raise RateLimited(retry_after)
 
-        if not await sync_to_async(user.check_password, thread_sensitive=False)(old_password):
-            await rate_limit(key, CHANGE_PW_FAIL_LIMIT, CHANGE_PW_FAIL_WINDOW)
+        retry_after = await rate_limit(key, CHANGE_PW_FAIL_LIMIT, CHANGE_PW_FAIL_WINDOW)
+
+        if not await user.acheck_password(old_password):
+            if retry_after:
+                raise RateLimited(retry_after)
             raise BadRequest(ErrorCode.WRONG_PASSWORD)
 
-        # Revoke first: if saving the password fails, other devices are only logged out,
-        # never left logged in after a password change.
+        await clear_rate_limit(key)
         await AuthnService().revoke_all_tokens(str(user.id), keep_raw_token=refresh_token)
         await UserRepository.set_password(user, new_password)
