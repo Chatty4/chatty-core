@@ -1,6 +1,7 @@
 # Local environment and secrets
 .env
 .venv/
+keys/
 
 # Git and editor files
 .git/
@@ -15,6 +16,7 @@
 
 # Not needed to run the service
 tests/
+perf/
 Dockerfile
 .dockerignore
 CLAUDE.md
