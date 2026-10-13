@@ -108,6 +108,40 @@ async def test_logout_missing_refresh_token_field(async_client, tokens):
     assert response.json()["error"]["fields"] == {"refresh_token": "required"}
 
 
+async def test_logout_other_users_revoked_token_returns_403(async_client, tokens):
+    """User B cannot use another user's already-revoked token to get a silent 204."""
+    user_b = await sync_to_async(User.objects.create_user)(
+        email="bob2@example.com", display_name="Bob", password=PASSWORD
+    )
+    b_resp = await async_client.post(
+        LOGIN_URL,
+        {"email": "bob2@example.com", "password": PASSWORD},
+        content_type="application/json",
+    )
+    b_tokens = b_resp.json()
+
+    # Revoke A's token first (as A)
+    await async_client.post(
+        LOGOUT_URL,
+        {"refresh_token": tokens["refresh_token"]},
+        content_type="application/json",
+        headers={"Authorization": f"Bearer {tokens['access_token']}"},
+    )
+
+    # B tries to logout with A's now-revoked token → must be 403, not 204
+    response = await async_client.post(
+        LOGOUT_URL,
+        {"refresh_token": tokens["refresh_token"]},
+        content_type="application/json",
+        headers={"Authorization": f"Bearer {b_tokens['access_token']}"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+
+    await sync_to_async(user_b.delete)()
+
+
 async def test_logout_other_users_token_returns_403(async_client, tokens):
     """User B cannot revoke user A's refresh token; A's token must remain active."""
     # tokens belongs to user A (the `user` fixture); create user B and log them in

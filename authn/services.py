@@ -68,10 +68,12 @@ class AuthnService:
         No-op if already revoked or not found (contract).
         """
         token = await self.repo.get_by_hash(hashlib.sha256(raw_token.encode()).hexdigest())
-        if token is None or token.revoked_at is not None:
+        if token is None:
             return
         if str(token.user_id) != user_id:
             raise PermissionDenied(ErrorCode.FORBIDDEN)
+        if token.revoked_at is not None:
+            return
         await self.repo.revoke(token)
 
     async def revoke_all_tokens(self, user_id: str, keep_raw_token: str | None = None) -> None:
