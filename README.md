@@ -21,12 +21,13 @@ Run from `chatty-core` in PowerShell:
    ```bash
    cp .env.example .env
    ```
-4. Create the JWT keys and give chatty-chat the public one:
+4. Create the JWT keys with chatty-infra's setup (needs Docker; safe to run again):
    ```bash
-   docker run --rm -v ${PWD}/keys:/keys alpine/openssl genrsa -out /keys/jwt_private.pem 2048
-   docker run --rm -v ${PWD}/keys:/keys alpine/openssl rsa -in /keys/jwt_private.pem -pubout -out /keys/jwt_public.pem
-   mkdir ../chatty-chat/keys; cp keys/jwt_public.pem ../chatty-chat/keys/
+   ..\chatty-infra\setup.bat
    ```
+   Its "JWT keys" step creates `keys/jwt_private.pem` and `keys/jwt_public.pem` once, makes them readable
+   by the core container, and copies the public key to `chatty-chat/keys`. Keys that already exist are kept,
+   because new keys log everyone out.
 5. Create the tables:
    ```bash
    python manage.py migrate
@@ -81,6 +82,7 @@ python manage.py purge_refresh_tokens --days 60
 |---|---|
 | `Set the ... environment variable` | A variable is missing: compare `.env` with `.env.example` |
 | `401` with a token that worked before | Keys changed: log in again |
+| `PermissionError: ... jwt_private.pem` in Docker | Keys made by hand are readable only by root. Run `..\chatty-infra\setup.bat` once |
 | `429 rate_limited` while testing | `docker exec chatty-redis redis-cli --scan --pattern "login_fail:*"`, then `redis-cli DEL <key>` |
 | Can't reach the DB or Redis | Use `127.0.0.1` in `.env`, never `localhost` (IPv6 stall on Windows) |
 | Login takes ~1 s | Expected: password hashing is slow on purpose |
