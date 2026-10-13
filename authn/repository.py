@@ -23,7 +23,7 @@ class RefreshTokenRepository:
     @staticmethod
     def get_by_hash_sync(token_hash: str) -> RefreshToken | None:
         return (
-            RefreshToken.objects.select_for_update()
+            RefreshToken.objects.select_for_update(of=("self",))
             .select_related("user")
             .filter(token_hash=token_hash)
             .first()
