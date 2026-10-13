@@ -149,7 +149,6 @@ Async by default, with explicit sync islands.
 
 ## Don'ts
 
-- Don't run `migrate` on `core_db` before the custom User model exists.
 - Don't put logic in models, views or serializers.
 - Don't read or write chatty-chat's database or Kafka topics; talk to chatty-chat only through the contracts.
 - Don't commit `.env`, keys or tokens. Don't log tokens, passwords or presigned URLs.
