@@ -7,7 +7,7 @@ from django.db import models
 class UserManager(BaseUserManager):
     def create_user(self, email: str, display_name: str, password: str) -> User:
         user = self.model(
-            email=self.normalize_email(email).lower(),
+            email=email,
             display_name=display_name,
         )
         user.set_password(password)

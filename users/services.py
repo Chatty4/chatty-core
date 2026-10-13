@@ -17,6 +17,9 @@ REGISTER_WINDOW = 60 * 60
 LOGIN_FAIL_LIMIT = 5
 LOGIN_FAIL_WINDOW = 15 * 60
 
+CHANGE_PW_FAIL_LIMIT = 5
+CHANGE_PW_FAIL_WINDOW = 15 * 60
+
 
 class UserService:
     @staticmethod
@@ -42,22 +45,21 @@ class UserService:
 
         user = await UserRepository.get_by_email(email)
 
-        if user is None or not await sync_to_async(user.check_password, thread_sensitive=False)(
-            password
-        ):
-            retry_after = 0
-            for key in (f"login_fail:{email}", f"login_fail:{ip}"):
-                retry_after = retry_after or await rate_limit(
-                    key, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW
-                )
-            if retry_after:
-                raise RateLimited(retry_after)
-            raise Unauthorized(ErrorCode.INVALID_CREDENTIALS)
+        # Unknown email: spend ~1.2 s on a dummy hash to prevent timing-based
+        # account enumeration
+        if user is None:
+            await sync_to_async(User().set_password, thread_sensitive=False)(password)
+        elif await sync_to_async(user.check_password, thread_sensitive=False)(password):
+            if not user.is_active:
+                raise UserInactive()
+            return await AuthnService().issue_tokens(user)
 
-        if not user.is_active:
-            raise UserInactive()
-
-        return await AuthnService().issue_tokens(user)
+        retry_after = 0
+        for key in (f"login_fail:{email}", f"login_fail:{ip}"):
+            retry_after = retry_after or await rate_limit(key, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW)
+        if retry_after:
+            raise RateLimited(retry_after)
+        raise Unauthorized(ErrorCode.INVALID_CREDENTIALS)
 
     @staticmethod
     async def refresh_token(refresh_token: str) -> TokenPairSchema:
@@ -82,7 +84,13 @@ class UserService:
     async def change_password(
         user: User, old_password: str, new_password: str, refresh_token: str
     ) -> None:
+        key = f"change_pw_fail:{user.id}"
+        retry_after = await is_rate_limited(key, CHANGE_PW_FAIL_LIMIT)
+        if retry_after:
+            raise RateLimited(retry_after)
+
         if not await sync_to_async(user.check_password, thread_sensitive=False)(old_password):
+            await rate_limit(key, CHANGE_PW_FAIL_LIMIT, CHANGE_PW_FAIL_WINDOW)
             raise BadRequest(ErrorCode.WRONG_PASSWORD)
 
         # Revoke first: if saving the password fails, other devices are only logged out,

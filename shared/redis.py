@@ -22,9 +22,10 @@ async def close_redis_client() -> None:
 async def rate_limit(key: str, limit: int, window: int) -> int:
     """Returns seconds until reset if blocked, 0 if allowed."""
     redis = get_redis_client()
-    count = await redis.incr(key)
-    if count == 1:
-        await redis.expire(key, window)
+    async with redis.pipeline(transaction=False) as pipe:
+        await pipe.incr(key)
+        await pipe.expire(key, window, nx=True)
+        count, _ = await pipe.execute()
     if count > limit:
         return max(await redis.ttl(key), 1)
     return 0
@@ -41,6 +42,6 @@ async def is_rate_limited(key: str, limit: int) -> int:
     """Returns seconds until reset if currently over limit, 0 otherwise. Does not increment."""
     redis = get_redis_client()
     count_str = await redis.get(key)
-    if count_str and int(count_str) > limit:
+    if count_str and int(count_str) >= limit:
         return max(await redis.ttl(key), 1)
     return 0

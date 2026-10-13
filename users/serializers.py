@@ -24,6 +24,9 @@ class RegisterRequest(serializers.Serializer):
 
         return attrs
 
+    def validate_email(self, value: str) -> str:
+        return User.objects.normalize_email(value).lower()
+
 
 class UserResponse(serializers.ModelSerializer):
     avatar_file_id = serializers.UUIDField(source="avatar_id")
@@ -36,6 +39,9 @@ class UserResponse(serializers.ModelSerializer):
 class LoginRequest(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+
+    def validate_email(self, value: str) -> str:
+        return User.objects.normalize_email(value).lower()
 
 
 class TokenPairResponse(serializers.Serializer):

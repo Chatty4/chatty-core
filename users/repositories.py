@@ -15,7 +15,7 @@ class UserRepository:
     async def create_user(email: str, display_name: str, password: str) -> User:
         hashed = await sync_to_async(make_password, thread_sensitive=False)(password)
         return await User.objects.acreate(
-            email=User.objects.normalize_email(email).lower(),
+            email=email,
             display_name=display_name,
             password=hashed,
         )
