@@ -5,11 +5,20 @@ from asgiref.sync import sync_to_async
 
 from authn.models import RefreshToken
 from authn.services import AuthnService
+from shared.redis import get_redis_client
 from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 URL = "/api/core/v1/auth/password"
+
+
+@pytest.fixture(autouse=True)
+async def redis_cleanup():
+    get_redis_client.cache_clear()
+    yield
+    await get_redis_client().aclose()
+    get_redis_client.cache_clear()
 OLD = "correct horse battery"
 NEW = "a much longer passphrase"
 
@@ -78,3 +87,12 @@ async def test_without_token(async_client):
     response = await async_client.post(URL, {}, content_type="application/json")
 
     assert response.status_code == 401
+
+
+async def test_wrong_old_password_rate_limited_after_5_failures(async_client, user, this_device):
+    for _ in range(5):
+        await change(async_client, this_device, old="wrong password")
+
+    response = await change(async_client, this_device, old="wrong password")
+
+    assert response.status_code == 429

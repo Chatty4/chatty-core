@@ -17,6 +17,9 @@ REGISTER_WINDOW = 60 * 60
 LOGIN_FAIL_LIMIT = 5
 LOGIN_FAIL_WINDOW = 15 * 60
 
+CHANGE_PW_FAIL_LIMIT = 5
+CHANGE_PW_FAIL_WINDOW = 15 * 60
+
 
 class UserService:
     @staticmethod
@@ -81,7 +84,13 @@ class UserService:
     async def change_password(
         user: User, old_password: str, new_password: str, refresh_token: str
     ) -> None:
+        key = f"change_pw_fail:{user.id}"
+        retry_after = await is_rate_limited(key, CHANGE_PW_FAIL_LIMIT)
+        if retry_after:
+            raise RateLimited(retry_after)
+
         if not await sync_to_async(user.check_password, thread_sensitive=False)(old_password):
+            await rate_limit(key, CHANGE_PW_FAIL_LIMIT, CHANGE_PW_FAIL_WINDOW)
             raise BadRequest(ErrorCode.WRONG_PASSWORD)
 
         # Revoke first: if saving the password fails, other devices are only logged out,
