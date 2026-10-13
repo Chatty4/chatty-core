@@ -6,6 +6,7 @@ from shared.views import AsyncAPIView, UserAPIView
 from users.serializers import (
     ChangePasswordRequest,
     LoginRequest,
+    LoginResponse,
     MeResponse,
     RegisterRequest,
     TokenPairResponse,
@@ -26,8 +27,8 @@ class RegisterView(AsyncAPIView):
 class LoginView(AsyncAPIView):
     async def post(self, request):
         data = validated(LoginRequest, request.data)
-        tokens = await UserService.login(**data, ip=client_ip(request))
-        return Response(TokenPairResponse(tokens).data)
+        tokens, user = await UserService.login(**data, ip=client_ip(request))
+        return Response(LoginResponse({"user": user, **tokens.model_dump()}).data)
 
 
 class RefreshTokenView(AsyncAPIView):

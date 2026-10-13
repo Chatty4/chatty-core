@@ -52,6 +52,10 @@ class TokenPairResponse(serializers.Serializer):
     refresh_expires_in = serializers.IntegerField()
 
 
+class LoginResponse(TokenPairResponse):
+    user = UserResponse()
+
+
 class TokenRequest(serializers.Serializer):
     refresh_token = serializers.CharField()
 

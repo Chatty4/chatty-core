@@ -46,6 +46,9 @@ async def test_login_returns_token_pair(async_client, user):
     assert body["refresh_token"].startswith("rt_")
     assert body["expires_in"] == 900
     assert body["refresh_expires_in"] == 2592000
+    assert body["user"]["id"] == str(user.id)
+    assert body["user"]["email"] == EMAIL
+    assert body["user"]["display_name"] == "Ana Pop"
 
 
 async def test_login_wrong_password(async_client, user):

@@ -37,7 +37,7 @@ class UserService:
             raise Conflict(ErrorCode.EMAIL_TAKEN)
 
     @staticmethod
-    async def login(email: str, password: str, ip: str) -> TokenPairSchema:
+    async def login(email: str, password: str, ip: str) -> tuple[TokenPairSchema, User]:
         for key in (f"login_fail:{email}", f"login_fail:{ip}"):
             retry_after = await is_rate_limited(key, LOGIN_FAIL_LIMIT)
             if retry_after:
@@ -57,12 +57,15 @@ class UserService:
         # account enumeration
         if user is None:
             await sync_to_async(User().set_password, thread_sensitive=False)(password)
+        elif not user.is_active:
+            # Run the hash anyway so response time doesn't reveal password correctness
+            await user.acheck_password(password)
+            raise UserInactive()
         elif await user.acheck_password(password):
-            if not user.is_active:
-                raise UserInactive()
             for key in fail_keys:
                 await clear_rate_limit(key)
-            return await AuthnService().issue_tokens(user)
+            tokens = await AuthnService().issue_tokens(user)
+            return tokens, user
 
         if retry_after:
             raise RateLimited(retry_after)
