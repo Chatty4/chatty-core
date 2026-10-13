@@ -37,12 +37,13 @@ shared/                 code used by more than one app, no business rules
   serializers.py        validated(): run a serializer and return validated_data
   exceptions.py         domain exceptions (NotFound, PermissionDenied, Conflict, ValidationFailed, ...)
   exception_handler.py  maps domain + DRF exceptions to the contract error body
-  authentication.py     JWT (public API) and X-Service-Token (internal API)
+  authentication.py     ServiceTokenAuthentication: X-Service-Token for /internal
   permissions.py
   pagination.py         cursor pagination from api-core.md
   events.py             Redis publisher for core.events (D-06, D-08)
   storage.py            MinIO client and presigned URLs
 authn/                  refresh token model, RS256 JWT issuance, rotation and revocation
+  authentication.py     JWTAuthentication: Bearer JWT for /api/core/v1
   models.py             RefreshToken (stores SHA-256 hash only, never the raw token)
   repository.py         async ORM queries for refresh tokens
   schemas.py            TokenPairSchema (Pydantic) returned by AuthnService

@@ -7,7 +7,8 @@ from authn.models import RefreshToken
 
 
 class RefreshTokenRepository:
-    async def create(self, user_id: str, token_hash: str, expires_at: datetime) -> RefreshToken:
+    @staticmethod
+    async def create(user_id: str, token_hash: str, expires_at: datetime) -> RefreshToken:
         return await RefreshToken.objects.acreate(
             user_id=user_id, token_hash=token_hash, expires_at=expires_at
         )
@@ -18,7 +19,8 @@ class RefreshTokenRepository:
             user_id=user_id, token_hash=token_hash, expires_at=expires_at
         )
 
-    async def get_by_hash(self, token_hash: str) -> RefreshToken | None:
+    @staticmethod
+    async def get_by_hash(token_hash: str) -> RefreshToken | None:
         return await RefreshToken.objects.filter(token_hash=token_hash).afirst()
 
     @staticmethod
@@ -30,7 +32,8 @@ class RefreshTokenRepository:
             .first()
         )
 
-    async def revoke(self, token: RefreshToken) -> None:
+    @staticmethod
+    async def revoke(token: RefreshToken) -> None:
         token.revoked_at = timezone.now()
         await token.asave(update_fields=["revoked_at"])
 
@@ -39,7 +42,8 @@ class RefreshTokenRepository:
         token.revoked_at = timezone.now()
         token.save(update_fields=["revoked_at"])
 
-    async def revoke_all_for_user(self, user_id: str, except_hash: str | None = None) -> None:
+    @staticmethod
+    async def revoke_all_for_user(user_id: str, except_hash: str | None = None) -> None:
         tokens = RefreshToken.objects.filter(user_id=user_id, revoked_at__isnull=True)
         if except_hash:
             tokens = tokens.exclude(token_hash=except_hash)

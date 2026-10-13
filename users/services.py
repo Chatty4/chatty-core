@@ -38,7 +38,8 @@ class UserService:
 
     @staticmethod
     async def login(email: str, password: str, ip: str) -> tuple[TokenPairSchema, User]:
-        for key in (f"login_fail:{email}", f"login_fail:{ip}"):
+        fail_keys = (f"login_fail:{email}", f"login_fail:{ip}")
+        for key in fail_keys:
             retry_after = await is_rate_limited(key, LOGIN_FAIL_LIMIT)
             if retry_after:
                 raise RateLimited(retry_after)
@@ -48,7 +49,6 @@ class UserService:
         # Parallel wrong guesses would all pass the pre-check at count=0 and then
         # spend ~1.2 s hashing concurrently. Incrementing first means requests
         # beyond the limit are rejected before any hash work starts.
-        fail_keys = (f"login_fail:{email}", f"login_fail:{ip}")
         retry_after = 0
         for key in fail_keys:
             retry_after = retry_after or await rate_limit(key, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW)
