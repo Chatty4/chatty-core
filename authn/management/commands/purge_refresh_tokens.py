@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from authn.repository import RefreshTokenRepository
@@ -25,8 +25,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         days = options["days"]
         if days < 1:
-            self.stderr.write("--days must be >= 1")
-            return
+            raise CommandError("--days must be >= 1")
 
         cutoff = timezone.now() - timedelta(days=days)
 
