@@ -42,22 +42,21 @@ class UserService:
 
         user = await UserRepository.get_by_email(email)
 
-        if user is None or not await sync_to_async(user.check_password, thread_sensitive=False)(
-            password
-        ):
-            retry_after = 0
-            for key in (f"login_fail:{email}", f"login_fail:{ip}"):
-                retry_after = retry_after or await rate_limit(
-                    key, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW
-                )
-            if retry_after:
-                raise RateLimited(retry_after)
-            raise Unauthorized(ErrorCode.INVALID_CREDENTIALS)
+        # Unknown email: spend ~1.2 s on a dummy hash to prevent timing-based
+        # account enumeration
+        if user is None:
+            await sync_to_async(User().set_password, thread_sensitive=False)(password)
+        elif await sync_to_async(user.check_password, thread_sensitive=False)(password):
+            if not user.is_active:
+                raise UserInactive()
+            return await AuthnService().issue_tokens(user)
 
-        if not user.is_active:
-            raise UserInactive()
-
-        return await AuthnService().issue_tokens(user)
+        retry_after = 0
+        for key in (f"login_fail:{email}", f"login_fail:{ip}"):
+            retry_after = retry_after or await rate_limit(key, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW)
+        if retry_after:
+            raise RateLimited(retry_after)
+        raise Unauthorized(ErrorCode.INVALID_CREDENTIALS)
 
     @staticmethod
     async def refresh_token(refresh_token: str) -> TokenPairSchema:
