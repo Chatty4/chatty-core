@@ -19,6 +19,8 @@ async def redis_cleanup():
     yield
     await get_redis_client().aclose()
     get_redis_client.cache_clear()
+
+
 OLD = "correct horse battery"
 NEW = "a much longer passphrase"
 

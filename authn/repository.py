@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from django.db.models import Q
 from django.utils import timezone
 
 from authn.models import RefreshToken
@@ -43,3 +44,17 @@ class RefreshTokenRepository:
         if except_hash:
             tokens = tokens.exclude(token_hash=except_hash)
         await tokens.aupdate(revoked_at=timezone.now())
+
+    @staticmethod
+    def _stale_qs(cutoff: datetime):
+        return RefreshToken.objects.filter(Q(expires_at__lt=cutoff) | Q(revoked_at__lt=cutoff))
+
+    @staticmethod
+    def count_old(cutoff: datetime) -> int:
+        return RefreshTokenRepository._stale_qs(cutoff).count()
+
+    @staticmethod
+    def purge_old(cutoff: datetime) -> int:
+        """Delete tokens that expired or were revoked before cutoff. Returns count deleted."""
+        count, _ = RefreshTokenRepository._stale_qs(cutoff).delete()
+        return count

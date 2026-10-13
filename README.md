@@ -62,6 +62,18 @@ Not built yet: teams, invites, channels, files, `/internal`.
 | Lint and format | `ruff check . && ruff format .` |
 | Admin user | `python manage.py createsuperuser`, then open `/admin/` |
 | New migration | `python manage.py makemigrations && python manage.py migrate` |
+| Purge old tokens | `python manage.py purge_refresh_tokens` (default: older than 30 days) |
+
+`purge_refresh_tokens` deletes refresh tokens that are expired **or** revoked and older than the cutoff.
+Flags: `--days N` (default 30, must be ≥ 1), `--dry-run` (count without deleting).
+
+```bash
+# Preview what would be removed
+python manage.py purge_refresh_tokens --days 60 --dry-run
+
+# Delete tokens older than 60 days
+python manage.py purge_refresh_tokens --days 60
+```
 
 ## When something breaks
 
