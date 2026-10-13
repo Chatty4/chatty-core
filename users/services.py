@@ -57,7 +57,7 @@ class UserService:
         # account enumeration
         if user is None:
             await sync_to_async(User().set_password, thread_sensitive=False)(password)
-        elif await sync_to_async(user.check_password, thread_sensitive=False)(password):
+        elif await user.acheck_password(password):
             if not user.is_active:
                 raise UserInactive()
             for key in fail_keys:
@@ -98,7 +98,7 @@ class UserService:
 
         retry_after = await rate_limit(key, CHANGE_PW_FAIL_LIMIT, CHANGE_PW_FAIL_WINDOW)
 
-        if not await sync_to_async(user.check_password, thread_sensitive=False)(old_password):
+        if not await user.acheck_password(old_password):
             if retry_after:
                 raise RateLimited(retry_after)
             raise BadRequest(ErrorCode.WRONG_PASSWORD)
