@@ -155,7 +155,7 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "shared.exception_handler.exception_handler",
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "shared.authentication.JWTAuthentication",
+        "authn.authentication.JWTAuthentication",
     ],
 }
 
