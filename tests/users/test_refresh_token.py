@@ -124,3 +124,37 @@ async def test_refresh_missing_field(async_client, user):
 
     assert response.status_code == 400
     assert response.json()["error"]["fields"] == {"refresh_token": "required"}
+
+
+async def test_refresh_token_reuse_revokes_all_sessions(async_client, user):
+    """Replaying a rotated token is treated as theft: all active tokens are revoked."""
+    import hashlib
+
+    from authn.services import AuthnService
+
+    # Issue two sessions for the same user (simulates two devices)
+    session_a = await AuthnService().issue_tokens(user)
+    session_b = await AuthnService().issue_tokens(user)
+
+    # session_a rotates normally — old token is now revoked
+    await async_client.post(
+        REFRESH_URL,
+        {"refresh_token": session_a.refresh_token},
+        content_type="application/json",
+    )
+
+    # Replay the old (revoked) session_a token — reuse detected
+    response = await async_client.post(
+        REFRESH_URL,
+        {"refresh_token": session_a.refresh_token},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_refresh_token"
+
+    # session_b must also be revoked now (all sessions wiped)
+    b_hash = hashlib.sha256(session_b.refresh_token.encode()).hexdigest()
+    token_b = await RefreshToken.objects.filter(token_hash=b_hash).afirst()
+    assert token_b is not None
+    assert token_b.revoked_at is not None

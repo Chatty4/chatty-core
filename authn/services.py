@@ -33,9 +33,17 @@ class AuthnService:
         self.repo = RefreshTokenRepository()
 
     @transaction.atomic
-    def _rotate_sync(self, token_hash: str, new_hash: str, new_expires_at: datetime) -> str:
+    def _rotate_sync(
+        self, token_hash: str, new_hash: str, new_expires_at: datetime
+    ) -> tuple[str, bool]:
+        """Returns (user_id, reuse_detected). Reuse means the token was already rotated;
+        the caller must revoke all sessions outside this transaction."""
         token = RefreshTokenRepository.get_by_hash_sync(token_hash)
-        if token is None or token.revoked_at is not None or token.expires_at <= timezone.now():
+        if token is None:
+            raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
+        if token.revoked_at is not None:
+            return str(token.user_id), True
+        if token.expires_at <= timezone.now():
             raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
 
         if not token.user.is_active:
@@ -44,7 +52,7 @@ class AuthnService:
         RefreshTokenRepository.revoke_sync(token)
         RefreshTokenRepository.create_sync(str(token.user_id), new_hash, new_expires_at)
 
-        return str(token.user_id)
+        return str(token.user_id), False
 
     async def issue_tokens(self, user: User) -> TokenPairSchema:
         """Create a new access + refresh token pair for the given user."""
@@ -58,7 +66,13 @@ class AuthnService:
         new_raw, new_hash, new_expires_at = self._new_refresh_token()
 
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-        user_id = await sync_to_async(self._rotate_sync)(token_hash, new_hash, new_expires_at)
+        user_id, reuse = await sync_to_async(self._rotate_sync)(
+            token_hash, new_hash, new_expires_at
+        )
+
+        if reuse:
+            await self.repo.revoke_all_for_user(user_id)
+            raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
 
         return self._build_token_pair(user_id, new_raw)
 
