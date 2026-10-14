@@ -24,6 +24,8 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("health", health, name="health"),
     path("api/core/v1/", include("users.urls")),
+    path("api/core/v1/", include("teams.urls")),
+    path("api/core/v1/", include("channels.urls")),
 ]
 
 handler404 = "config.views.not_found"
