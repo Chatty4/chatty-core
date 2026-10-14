@@ -7,7 +7,7 @@ from authn.schemas import TokenPairSchema
 from authn.services import AuthnService
 from shared.codes import ErrorCode
 from shared.exceptions import BadRequest, Conflict, RateLimited, Unauthorized, UserInactive
-from shared.redis import clear_rate_limit, is_rate_limited, rate_limit
+from shared.redis import clear_rate_limit, is_rate_limited, rate_limit, undo_rate_limit
 from users.models import User
 from users.repositories import UserRepository
 
@@ -58,12 +58,12 @@ class UserService:
         if user is None:
             await sync_to_async(User().set_password, thread_sensitive=False)(password)
         elif not user.is_active:
-            # Run the hash anyway so response time doesn't reveal password correctness
+            # Only a correct password may reveal that the account is deactivated
             if await user.acheck_password(password):
                 raise UserInactive()
         elif await user.acheck_password(password):
-            for key in fail_keys:
-                await clear_rate_limit(key)
+            await clear_rate_limit(f"login_fail:{email}")
+            await undo_rate_limit(f"login_fail:{ip}")
             tokens = await AuthnService().issue_tokens(user)
             return tokens, user
 

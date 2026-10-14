@@ -112,3 +112,20 @@ async def test_login_success_not_counted_against_limit(async_client, user):
     response = await login(async_client, {"email": EMAIL, "password": "wrong"})
 
     assert response.status_code == 401  # not 429
+
+async def test_login_success_keeps_ip_failures(async_client, user):
+    for _ in range(4):
+        await login(async_client, {"email": "other@example.com", "password": "wrong"})
+    await login(async_client, {"email": EMAIL, "password": PASSWORD})  # attacker's own account
+
+    response = await login(async_client, {"email": "other@example.com", "password": "wrong"})
+    response = await login(async_client, {"email": "third@example.com", "password": "wrong"})
+
+    assert response.status_code == 429
+
+
+async def test_login_successes_do_not_lock_ip(async_client, user):
+    for _ in range(6):
+        response = await login(async_client, {"email": EMAIL, "password": PASSWORD})
+
+    assert response.status_code == 200
