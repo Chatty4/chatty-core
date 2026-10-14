@@ -7,6 +7,11 @@ from teams.models import Team, TeamMember
 
 class TeamRepository:
     @staticmethod
+    async def get_by_id(team_id: UUID) -> Team | None:
+        """Return a non-deleted team by id, or None."""
+        return await Team.objects.filter(id=team_id, deleted_at__isnull=True).afirst()
+
+    @staticmethod
     async def count_created_by(user_id: UUID) -> int:
         """Count non-deleted teams created by this user."""
         return await Team.objects.filter(created_by_id=user_id, deleted_at__isnull=True).acount()
@@ -47,3 +52,13 @@ class TeamMemberRepository:
     def create_sync(team: Team, user_id: UUID, role: str) -> TeamMember:
         """Create and return a team member."""
         return TeamMember.objects.create(team=team, user_id=user_id, role=role)
+
+    @staticmethod
+    async def get_member(team_id: UUID, user_id: UUID) -> TeamMember | None:
+        """Return the membership row for this user, or None."""
+        return await TeamMember.objects.filter(team_id=team_id, user_id=user_id).afirst()
+
+    @staticmethod
+    async def count_members(team_id: UUID) -> int:
+        """Return the total number of members in a team."""
+        return await TeamMember.objects.filter(team_id=team_id).acount()

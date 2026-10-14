@@ -6,13 +6,27 @@ from django.db import transaction
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
 from shared.codes import ErrorCode
-from shared.exceptions import Conflict
-from teams.models import TeamMember
+from shared.exceptions import Conflict, NotFound, PermissionDenied
+from teams.models import Team, TeamMember
 from teams.repositories import TeamMemberRepository, TeamRepository
 from teams.schemas import CreateTeamResult, TeamResult
 
 
 class TeamService:
+    @staticmethod
+    async def _get_team_or_404(team_id: UUID) -> Team:
+        team = await TeamRepository.get_by_id(team_id)
+        if team is None:
+            raise NotFound(ErrorCode.TEAM_NOT_FOUND)
+        return team
+
+    @staticmethod
+    async def _get_member_or_403(team_id: UUID, user_id: UUID) -> TeamMember:
+        member = await TeamMemberRepository.get_member(team_id, user_id)
+        if member is None:
+            raise PermissionDenied(ErrorCode.NOT_A_TEAM_MEMBER)
+        return member
+
     @staticmethod
     async def create(name: str, user_id: UUID) -> CreateTeamResult:
         if await TeamRepository.count_created_by(user_id) >= 10:
@@ -61,3 +75,17 @@ class TeamService:
             )
             for team in teams
         ]
+
+    @staticmethod
+    async def get(team_id: UUID, user_id: UUID) -> TeamResult:
+        team = await TeamService._get_team_or_404(team_id)
+        member = await TeamService._get_member_or_403(team_id, user_id)
+        count = await TeamMemberRepository.count_members(team_id)
+        return TeamResult(
+            id=team.id,
+            name=team.name,
+            icon_file_id=team.icon_id,
+            role=member.role,
+            member_count=count,
+            created_at=team.created_at,
+        )
