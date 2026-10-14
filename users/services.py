@@ -52,7 +52,8 @@ class UserService:
         retry_after = 0
         for key in fail_keys:
             retry_after = retry_after or await rate_limit(key, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW)
-
+        if retry_after:
+            raise RateLimited(retry_after, ErrorCode.TOO_MANY_ATTEMPTS)
         # Unknown email: spend ~1.2 s on a dummy hash to prevent timing-based
         # account enumeration
         if user is None:
@@ -67,8 +68,6 @@ class UserService:
             tokens = await AuthnService().issue_tokens(user)
             return tokens, user
 
-        if retry_after:
-            raise RateLimited(retry_after, ErrorCode.TOO_MANY_ATTEMPTS)
         raise Unauthorized(ErrorCode.INVALID_CREDENTIALS)
 
     @staticmethod

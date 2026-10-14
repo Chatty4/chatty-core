@@ -1,7 +1,7 @@
 import pytest
 from asgiref.sync import sync_to_async
 
-from shared.redis import clear_rate_limit, get_redis_client
+from shared.redis import clear_rate_limit, get_redis_client, rate_limit
 from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -9,7 +9,6 @@ pytestmark = pytest.mark.django_db(transaction=True)
 URL = "/api/core/v1/auth/login"
 EMAIL = "ana@example.com"
 PASSWORD = "correct horse battery"
-RATE_KEY_IP = "login_fail:127.0.0.1"
 RATE_KEYS = (
     "login_fail:127.0.0.1",
     f"login_fail:{EMAIL}",
@@ -137,3 +136,26 @@ async def test_login_successes_do_not_lock_ip(async_client, user):
         response = await login(async_client, {"email": EMAIL, "password": PASSWORD})
 
     assert response.status_code == 200
+
+async def test_login_over_limit_rejected_before_hashing(async_client, user, monkeypatch):
+    # Simulate parallel requests: all passed the pre-check, the counter is already full
+    async def not_limited(key, limit):
+        return 0
+
+    monkeypatch.setattr("users.services.is_rate_limited", not_limited)
+    for _ in range(5):
+        await rate_limit(f"login_fail:{EMAIL}", 5, 900)
+
+    hashed = []
+
+    async def fake_check(self, password):
+        hashed.append(password)
+        return True
+
+    monkeypatch.setattr(User, "acheck_password", fake_check)
+
+    response = await login(async_client, {"email": EMAIL, "password": PASSWORD})
+
+    assert response.status_code == 429
+    assert response.json()["error"]["code"] == "too_many_attempts"
+    assert hashed == []  # no hash work was done
