@@ -38,6 +38,16 @@ async def clear_rate_limit(key: str) -> None:
         logger.warning("Failed to clear rate limit key %s", key)
 
 
+async def undo_rate_limit(key: str) -> None:
+    """Take back one rate_limit() hit, e.g. for a request that turned out fine."""
+    try:
+        redis = get_redis_client()
+        if await redis.decr(key) <= 0:
+            await redis.delete(key)  # also cleans up if the key expired and decr created -1
+    except RedisError:
+        logger.warning("Failed to undo rate limit key %s", key)
+
+
 async def is_rate_limited(key: str, limit: int) -> int:
     """Returns seconds until reset if currently over limit, 0 otherwise. Does not increment."""
     redis = get_redis_client()

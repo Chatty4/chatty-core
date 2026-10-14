@@ -1,5 +1,7 @@
 import pytest
 
+from authn.models import RefreshToken
+from authn.services import AuthnService
 from users.models import User
 from users.services import UserService
 
@@ -11,6 +13,10 @@ CHANGELIST = "/admin/users/user/"
 
 async def make_user(email, **fields):
     return await User.objects.acreate(email=email, display_name="Test", **fields)
+
+
+async def live_tokens(user):
+    return await RefreshToken.objects.filter(user=user, revoked_at__isnull=True).acount()
 
 
 async def test_deactivate_returns_only_users_that_were_active():
@@ -58,3 +64,36 @@ async def test_admin_form_cannot_change_is_active(async_client):
 
     assert response.status_code == 200
     assert 'name="is_active"' not in response.content.decode()
+
+
+async def test_deactivate_revokes_all_refresh_tokens():
+    user = await make_user("a@example.com")
+    await AuthnService().issue_tokens(user)  # phone
+    await AuthnService().issue_tokens(user)  # laptop
+
+    await UserService.deactivate([user.id])
+
+    assert await live_tokens(user) == 0
+
+
+async def test_deactivate_keeps_other_users_tokens():
+    target = await make_user("a@example.com")
+    other = await make_user("b@example.com")
+    await AuthnService().issue_tokens(target)
+    await AuthnService().issue_tokens(other)
+
+    await UserService.deactivate([target.id])
+
+    assert await live_tokens(other) == 1
+
+
+async def test_deactivate_cleans_tokens_of_already_inactive_user():
+    # deactivated before this fix: inactive, but with a live token left behind
+    user = await make_user("a@example.com")
+    await AuthnService().issue_tokens(user)
+    await User.objects.filter(id=user.id).aupdate(is_active=False)
+
+    deactivated = await UserService.deactivate([user.id])
+
+    assert deactivated == []  # no new deactivation, so no future event
+    assert await live_tokens(user) == 0

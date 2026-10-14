@@ -97,3 +97,18 @@ async def test_register_rate_limited_after_10_per_hour(async_client):
     assert response.status_code == 429
     assert response.json()["error"]["code"] == "rate_limited"
     assert int(response["Retry-After"]) > 0
+
+
+async def test_register_ignores_bad_bearer(async_client):
+    response = await async_client.post(
+        URL,
+        {
+            "email": "new@example.com",
+            "display_name": "New User",
+            "password": "correct horse battery",
+        },
+        content_type="application/json",
+        headers={"Authorization": "Bearer garbage"},
+    )
+
+    assert response.status_code == 201
