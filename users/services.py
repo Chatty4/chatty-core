@@ -42,7 +42,7 @@ class UserService:
         for key in fail_keys:
             retry_after = await is_rate_limited(key, LOGIN_FAIL_LIMIT)
             if retry_after:
-                raise RateLimited(retry_after)
+                raise RateLimited(retry_after, ErrorCode.TOO_MANY_ATTEMPTS)
 
         user = await UserRepository.get_by_email(email)
 
@@ -68,7 +68,7 @@ class UserService:
             return tokens, user
 
         if retry_after:
-            raise RateLimited(retry_after)
+            raise RateLimited(retry_after, ErrorCode.TOO_MANY_ATTEMPTS)
         raise Unauthorized(ErrorCode.INVALID_CREDENTIALS)
 
     @staticmethod

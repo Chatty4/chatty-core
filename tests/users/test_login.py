@@ -98,7 +98,7 @@ async def test_login_rate_limited_after_5_failures(async_client, user):
     response = await login(async_client, {"email": EMAIL, "password": "wrong"})
 
     assert response.status_code == 429
-    assert response.json()["error"]["code"] == "rate_limited"
+    assert response.json()["error"]["code"] == "too_many_attempts"
     assert int(response["Retry-After"]) > 0
 
 
