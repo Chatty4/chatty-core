@@ -81,7 +81,12 @@ class UserService:
     @staticmethod
     async def deactivate(user_ids: list[UUID]) -> list[UUID]:
         """no user.deactivated event yet. CHAT-172 publishes it here with transaction.on_commit"""
-        return await UserRepository.deactivate_user(user_ids)
+        deactivated = await UserRepository.deactivate_user(user_ids)
+        # All selected ids, not only the newly deactivated, so users deactivated
+        # before this fix also lose their leftover sessions
+        for user_id in user_ids:
+            await AuthnService().revoke_all_tokens(str(user_id))
+        return deactivated
 
     @staticmethod
     async def update_profile(
