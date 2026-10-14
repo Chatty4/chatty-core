@@ -110,6 +110,7 @@ class UserService:
                 raise RateLimited(retry_after)
             raise BadRequest(ErrorCode.WRONG_PASSWORD)
 
+        await AuthnService().check_own_refresh_token(refresh_token, str(user.id))
         await clear_rate_limit(key)
         await AuthnService().revoke_all_tokens(str(user.id), keep_raw_token=refresh_token)
         await UserRepository.set_password(user, new_password)

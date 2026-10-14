@@ -1,7 +1,9 @@
 import hashlib
+from datetime import timedelta
 
 import pytest
 from asgiref.sync import sync_to_async
+from django.utils import timezone
 
 from authn.models import RefreshToken
 from authn.services import AuthnService
@@ -40,6 +42,19 @@ async def this_device(user):
 @pytest.fixture
 async def other_device(user):
     return await AuthnService().issue_tokens(user)
+
+
+@pytest.fixture
+async def stranger():
+    stranger = await sync_to_async(User.objects.create_user)(
+        email="bob@example.com", display_name="Bob", password=OLD
+    )
+    return await AuthnService().issue_tokens(stranger)
+
+
+async def password_is_old(user) -> bool:
+    saved = await User.objects.aget(id=user.id)
+    return await sync_to_async(saved.check_password)(OLD)
 
 
 async def change(client, tokens, old=OLD, new=NEW):
@@ -98,3 +113,49 @@ async def test_wrong_old_password_rate_limited_after_5_failures(async_client, us
     response = await change(async_client, this_device, old="wrong password")
 
     assert response.status_code == 429
+
+
+async def test_unknown_refresh_token(async_client, user, this_device, other_device):
+    this_device.refresh_token = "rt_garbage"
+
+    response = await change(async_client, this_device)
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_refresh_token"
+    assert await password_is_old(user)
+    assert not await is_revoked(other_device.refresh_token)
+
+
+async def test_other_users_refresh_token(async_client, user, this_device, other_device, stranger):
+    this_device.refresh_token = stranger.refresh_token
+
+    response = await change(async_client, this_device)
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+    assert await password_is_old(user)
+    assert not await is_revoked(other_device.refresh_token)
+    assert not await is_revoked(stranger.refresh_token)
+
+
+async def test_revoked_refresh_token(async_client, user, this_device, other_device):
+    await AuthnService().revoke_refresh_token(this_device.refresh_token, str(user.id))
+
+    response = await change(async_client, this_device)
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_refresh_token"
+    assert await password_is_old(user)
+    assert not await is_revoked(other_device.refresh_token)
+
+
+async def test_expired_refresh_token(async_client, user, this_device, other_device):
+    await RefreshToken.objects.filter(user=user).aupdate(
+        expires_at=timezone.now() - timedelta(minutes=1)
+    )
+
+    response = await change(async_client, this_device)
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_refresh_token"
+    assert await password_is_old(user)
