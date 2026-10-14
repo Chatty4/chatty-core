@@ -9,7 +9,7 @@ from shared.codes import ErrorCode
 from shared.exceptions import Conflict
 from teams.models import TeamMember
 from teams.repositories import TeamMemberRepository, TeamRepository
-from teams.schemas import CreateTeamResult
+from teams.schemas import CreateTeamResult, TeamResult
 
 
 class TeamService:
@@ -46,3 +46,18 @@ class TeamService:
             general_channel_id=channel.id,
             created_at=team.created_at,
         )
+
+    @staticmethod
+    async def list_for_user(user_id: UUID) -> list[TeamResult]:
+        teams = await TeamRepository.list_by_user(user_id)
+        return [
+            TeamResult(
+                id=team.id,
+                name=team.name,
+                icon_file_id=team.icon_id,
+                role=team.role,  # type: ignore[attr-defined]
+                member_count=team.member_count,  # type: ignore[attr-defined]
+                created_at=team.created_at,
+            )
+            for team in teams
+        ]
