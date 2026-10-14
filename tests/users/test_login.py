@@ -10,7 +10,13 @@ URL = "/api/core/v1/auth/login"
 EMAIL = "ana@example.com"
 PASSWORD = "correct horse battery"
 RATE_KEY_IP = "login_fail:127.0.0.1"
-RATE_KEY_EMAIL = f"login_fail:{EMAIL}"
+RATE_KEYS = (
+    "login_fail:127.0.0.1",
+    f"login_fail:{EMAIL}",
+    "login_fail:nobody@example.com",
+    "login_fail:other@example.com",
+    "login_fail:third@example.com",
+)
 
 
 @pytest.fixture
@@ -23,10 +29,10 @@ async def user():
 @pytest.fixture(autouse=True)
 async def redis_client():
     get_redis_client.cache_clear()
-    for key in (RATE_KEY_IP, RATE_KEY_EMAIL):
+    for key in RATE_KEYS:
         await clear_rate_limit(key)
     yield
-    for key in (RATE_KEY_IP, RATE_KEY_EMAIL):
+    for key in RATE_KEYS:
         await clear_rate_limit(key)
     await get_redis_client().aclose()
     get_redis_client.cache_clear()
@@ -81,6 +87,7 @@ async def test_login_inactive_user(async_client, user):
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "user_inactive"
 
+
 async def test_login_inactive_user_wrong_password(async_client, user):
     user.is_active = False
     await user.asave(update_fields=["is_active"])
@@ -112,6 +119,7 @@ async def test_login_success_not_counted_against_limit(async_client, user):
     response = await login(async_client, {"email": EMAIL, "password": "wrong"})
 
     assert response.status_code == 401  # not 429
+
 
 async def test_login_success_keeps_ip_failures(async_client, user):
     for _ in range(4):
