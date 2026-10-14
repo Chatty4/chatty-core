@@ -59,8 +59,8 @@ class UserService:
             await sync_to_async(User().set_password, thread_sensitive=False)(password)
         elif not user.is_active:
             # Run the hash anyway so response time doesn't reveal password correctness
-            await user.acheck_password(password)
-            raise UserInactive()
+            if await user.acheck_password(password):
+                raise UserInactive()
         elif await user.acheck_password(password):
             for key in fail_keys:
                 await clear_rate_limit(key)

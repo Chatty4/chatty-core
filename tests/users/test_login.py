@@ -81,6 +81,15 @@ async def test_login_inactive_user(async_client, user):
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "user_inactive"
 
+async def test_login_inactive_user_wrong_password(async_client, user):
+    user.is_active = False
+    await user.asave(update_fields=["is_active"])
+
+    response = await login(async_client, {"email": EMAIL, "password": "wrong"})
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_credentials"
+
 
 async def test_login_rate_limited_after_5_failures(async_client, user):
     for _ in range(5):
