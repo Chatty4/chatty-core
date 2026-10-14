@@ -89,3 +89,18 @@ class TeamService:
             member_count=count,
             created_at=team.created_at,
         )
+
+    @staticmethod
+    async def require_member(
+        team_id: UUID, user_id: UUID, roles: set[TeamMember.Role] | None = None
+    ) -> TeamMember:
+        """The user's membership in a live team. Every /teams/{team_id}/... endpoint starts here.
+
+        Raises team_not_found, not_a_team_member, or forbidden when `roles` is given and the
+        user's role isn't in it.
+        """
+        await TeamService._get_team_or_404(team_id)
+        member = await TeamService._get_member_or_403(team_id, user_id)
+        if roles is not None and member.role not in roles:
+            raise PermissionDenied()
+        return member
