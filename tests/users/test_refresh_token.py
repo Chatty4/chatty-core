@@ -158,3 +158,20 @@ async def test_refresh_token_reuse_revokes_all_sessions(async_client, user):
     token_b = await RefreshToken.objects.filter(token_hash=b_hash).afirst()
     assert token_b is not None
     assert token_b.revoked_at is not None
+
+
+async def test_refresh_works_with_expired_access_token(async_client, user, settings):
+    settings.JWT_ACCESS_TOKEN_LIFETIME = -60  # access tokens are issued already expired
+    login = await async_client.post(
+        LOGIN_URL, {"email": EMAIL, "password": PASSWORD}, content_type="application/json"
+    )
+    tokens = login.json()
+
+    response = await async_client.post(
+        REFRESH_URL,
+        {"refresh_token": tokens["refresh_token"]},
+        content_type="application/json",
+        headers={"Authorization": f"Bearer {tokens['access_token']}"},
+    )
+
+    assert response.status_code == 200

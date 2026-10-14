@@ -137,6 +137,7 @@ async def test_login_successes_do_not_lock_ip(async_client, user):
 
     assert response.status_code == 200
 
+
 async def test_login_over_limit_rejected_before_hashing(async_client, user, monkeypatch):
     # Simulate parallel requests: all passed the pre-check, the counter is already full
     async def not_limited(key, limit):
@@ -159,3 +160,14 @@ async def test_login_over_limit_rejected_before_hashing(async_client, user, monk
     assert response.status_code == 429
     assert response.json()["error"]["code"] == "too_many_attempts"
     assert hashed == []  # no hash work was done
+
+
+async def test_login_ignores_bad_bearer(async_client, user):
+    response = await async_client.post(
+        URL,
+        {"email": EMAIL, "password": PASSWORD},
+        content_type="application/json",
+        headers={"Authorization": "Bearer garbage"},
+    )
+
+    assert response.status_code == 200

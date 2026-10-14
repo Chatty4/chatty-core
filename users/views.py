@@ -18,6 +18,8 @@ from users.services import UserService
 
 
 class RegisterView(AsyncAPIView):
+    authentication_classes = []
+
     async def post(self, request):
         data = validated(RegisterRequest, request.data)
         user = await UserService.register(**data, ip=client_ip(request))
@@ -25,6 +27,8 @@ class RegisterView(AsyncAPIView):
 
 
 class LoginView(AsyncAPIView):
+    authentication_classes = []
+
     async def post(self, request):
         data = validated(LoginRequest, request.data)
         tokens, user = await UserService.login(**data, ip=client_ip(request))
@@ -32,6 +36,8 @@ class LoginView(AsyncAPIView):
 
 
 class RefreshTokenView(AsyncAPIView):
+    authentication_classes = []
+
     async def post(self, request):
         data = validated(TokenRequest, request.data)
         tokens = await UserService.refresh_token(**data)
