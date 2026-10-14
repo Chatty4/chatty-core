@@ -52,7 +52,7 @@ async def test_create_team_persists_db_objects(async_client, user, auth):
 
     team = await Team.objects.aget(id=team_id)
     assert team.name == "Backend"
-    assert str(team.created_by_id) == str(user.id) # type: ignore
+    assert str(team.created_by_id) == str(user.id)  # type: ignore
 
     member = await TeamMember.objects.aget(team_id=team_id, user_id=user.id)
     assert member.role == TeamMember.Role.OWNER
