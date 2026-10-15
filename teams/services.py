@@ -6,13 +6,27 @@ from django.db import transaction
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
 from shared.codes import ErrorCode
-from shared.exceptions import Conflict
-from teams.models import TeamMember
+from shared.exceptions import Conflict, NotFound, PermissionDenied
+from teams.models import Team, TeamMember
 from teams.repositories import TeamMemberRepository, TeamRepository
-from teams.schemas import CreateTeamResult, TeamResult
+from teams.schemas import CreateTeamResult, TeamDetailResult, TeamResult
 
 
 class TeamService:
+    @staticmethod
+    async def _get_team_or_404(team_id: UUID) -> Team:
+        team = await TeamRepository.get_by_id(team_id)
+        if team is None:
+            raise NotFound(ErrorCode.TEAM_NOT_FOUND)
+        return team
+
+    @staticmethod
+    async def _get_member_or_403(team_id: UUID, user_id: UUID) -> TeamMember:
+        member = await TeamMemberRepository.get_member(team_id, user_id)
+        if member is None:
+            raise PermissionDenied(ErrorCode.NOT_A_TEAM_MEMBER)
+        return member
+
     @staticmethod
     async def create(name: str, user_id: UUID) -> CreateTeamResult:
         if await TeamRepository.count_created_by(user_id) >= 10:
@@ -61,3 +75,61 @@ class TeamService:
             )
             for team in teams
         ]
+
+    @staticmethod
+    async def get(team_id: UUID, user_id: UUID) -> TeamDetailResult:
+        team, member = await TeamService.require_member(team_id, user_id)
+        count = await TeamMemberRepository.count_members(team_id)
+        return TeamDetailResult(
+            id=team.id,
+            name=team.name,
+            icon_file_id=team.icon_id,
+            my_role=member.role,
+            member_count=count,
+            created_by=team.created_by_id,  # type: ignore[attr-defined]
+            created_at=team.created_at,
+        )
+
+    @staticmethod
+    async def update(
+        team_id: UUID, user_id: UUID, name: str, icon_file_id: UUID | None
+    ) -> TeamDetailResult:
+        """
+        TODO: validate icon_file_id against the files model (ready,
+        team_icon purpose, same team).
+        """
+        team, member = await TeamService.require_member(
+            team_id, user_id, roles={TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
+        )
+        team = await TeamRepository.update(team, name=name, icon_id=icon_file_id)
+        count = await TeamMemberRepository.count_members(team_id)
+        return TeamDetailResult(
+            id=team.id,
+            name=team.name,
+            icon_file_id=team.icon_id,
+            my_role=member.role,
+            member_count=count,
+            created_by=team.created_by_id,  # type: ignore[attr-defined]
+            created_at=team.created_at,
+        )
+
+    @staticmethod
+    async def delete(team_id: UUID, user_id: UUID) -> None:
+        """TODO: publish team.deleted event after commit."""
+        team, _ = await TeamService.require_member(team_id, user_id, roles={TeamMember.Role.OWNER})
+        await TeamRepository.delete(team)
+
+    @staticmethod
+    async def require_member(
+        team_id: UUID, user_id: UUID, roles: set[TeamMember.Role] | None = None
+    ) -> tuple[Team, TeamMember]:
+        """The user's membership in a live team. Every /teams/{team_id}/... endpoint starts here.
+
+        Raises team_not_found, not_a_team_member, or forbidden when `roles` is given and the
+        user's role isn't in it.
+        """
+        team = await TeamService._get_team_or_404(team_id)
+        member = await TeamService._get_member_or_403(team_id, user_id)
+        if roles is not None and member.role not in roles:
+            raise PermissionDenied()
+        return team, member
