@@ -85,3 +85,10 @@ class ChannelService:
             )
             for m in memberships
         ]
+
+    @staticmethod
+    async def browse(
+        team_id: UUID, user_id: UUID, limit: int, cursor: str | None = None, q: str | None = None
+    ) -> tuple[list[Channel], str | None]:
+        await TeamService.require_member(team_id, user_id)
+        return await ChannelRepository.browse(team_id, user_id, q, cursor, limit)

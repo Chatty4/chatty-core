@@ -1,6 +1,9 @@
 from uuid import UUID
 
+from django.db.models import Count
+
 from channels.models import Channel, ChannelMember
+from shared.pagination import paginate
 from teams.models import Team
 
 
@@ -27,6 +30,19 @@ class ChannelRepository:
             .filter(id=channel_id, team__deleted_at__isnull=True)
             .afirst()
         )
+
+    @staticmethod
+    async def browse(
+        team_id: UUID, user_id: UUID, q: str | None, cursor: str | None, limit: int
+    ) -> tuple[list[Channel], str | None]:
+        """A page of the team's public channels the user isn't in, each with member_count."""
+        qs = Channel.objects.filter(team_id=team_id, kind=Channel.Kind.PUBLIC).exclude(
+            members__user_id=user_id
+        )
+        if q:
+            qs = qs.filter(name__icontains=q)
+        qs = qs.annotate(member_count=Count("members"))
+        return await paginate(qs, ("name", "id"), cursor, limit, "channel_browse", q)
 
 
 class ChannelMemberRepository:

@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from channels.models import Channel
 from channels.schemas import MyChannel
+from shared.pagination import PageQuery
 
 
 class CreateChannelRequest(serializers.Serializer):
@@ -49,3 +50,16 @@ class MyChannelResponse(serializers.Serializer):
 
     def get_archived(self, item: MyChannel) -> bool:
         return item.channel.archived_at is not None
+
+class BrowseChannelsQuery(PageQuery):
+    q = serializers.CharField(required=False, allow_blank=True)
+
+class BrowseChannelResponse(serializers.Serializer):
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    topic = serializers.CharField()
+    member_count = serializers.IntegerField()
+    archived = serializers.SerializerMethodField()
+
+    def get_archived(self, channel: Channel) -> bool:
+        return channel.archived_at is not None
