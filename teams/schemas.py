@@ -30,13 +30,17 @@ class TeamDetailResult:
 
 
 @dataclass
-class InviteResult:
+class BaseInviteResult:
     id: UUID
     code: str
     url: str
-    team_id: UUID
     created_by: UUID | None
     max_uses: int
     uses: int
     expires_at: datetime | None
     created_at: datetime
+
+
+@dataclass
+class InviteResult(BaseInviteResult):
+    team_id: UUID

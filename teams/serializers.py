@@ -96,13 +96,16 @@ class CreateInviteRequest(serializers.Serializer):
         return value
 
 
-class InviteResponse(serializers.Serializer):
+class BaseInviteResponse(serializers.Serializer):
     id = serializers.UUIDField()
     code = serializers.CharField()
     url = serializers.CharField()
-    team_id = serializers.UUIDField()
     created_by = serializers.UUIDField(allow_null=True)
     max_uses = serializers.IntegerField()
     uses = serializers.IntegerField()
     expires_at = serializers.DateTimeField(allow_null=True)
     created_at = serializers.DateTimeField()
+
+
+class InviteResponse(BaseInviteResponse):
+    team_id = serializers.UUIDField()

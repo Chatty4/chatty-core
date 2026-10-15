@@ -11,7 +11,13 @@ from shared.codes import ErrorCode
 from shared.exceptions import Conflict, NotFound, PermissionDenied
 from teams.models import Team, TeamMember
 from teams.repositories import InviteRepository, TeamMemberRepository, TeamRepository
-from teams.schemas import CreateTeamResult, InviteResult, TeamDetailResult, TeamResult
+from teams.schemas import (
+    BaseInviteResult,
+    CreateTeamResult,
+    InviteResult,
+    TeamDetailResult,
+    TeamResult,
+)
 
 MANAGERS = {TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
 
@@ -228,7 +234,7 @@ class InviteService:
         """Lock the team row, enforce the 100-invite cap, then insert."""
         if InviteRepository.count_active_sync(team_id) >= 100:
             raise Conflict(ErrorCode.INVITE_LIMIT_REACHED)
-        
+
         code = InviteService._unique_code_sync()
         invite = InviteRepository.create_sync(team_id, user_id, code, max_age, max_uses)
         return InviteResult(
@@ -250,3 +256,24 @@ class InviteService:
             code = secrets.token_urlsafe(6)
             if not InviteRepository.code_exists_sync(code):
                 return code
+
+    @staticmethod
+    async def list_invites(team_id: UUID, user_id: UUID) -> list[BaseInviteResult]:
+        """Active invites for the team. Owners and admins see all; members see only their own."""
+        _, member = await TeamService.require_member(team_id, user_id)
+        created_by_id = None if member.role in MANAGERS else user_id
+        invites = await InviteRepository.list_active(team_id, created_by_id)
+
+        return [
+            BaseInviteResult(
+                id=invite.id,
+                code=invite.code,
+                url=f"{settings.APP_URL}/invite/{invite.code}",
+                created_by=invite.created_by_id,  # type: ignore[attr-defined]
+                max_uses=invite.max_uses,
+                uses=invite.uses,
+                expires_at=invite.expires_at,
+                created_at=invite.created_at,
+            )
+            for invite in invites
+        ]

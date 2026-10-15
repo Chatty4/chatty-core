@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from shared.serializers import validated
 from shared.views import UserAPIView
 from teams.serializers import (
+    BaseInviteResponse,
     ChangeRoleRequest,
     CreateInviteRequest,
     CreateTeamRequest,
@@ -77,3 +78,7 @@ class TeamInvitesView(UserAPIView):
         data = validated(CreateInviteRequest, request.data)
         result = await InviteService.create(team_id=team_id, user_id=request.user.id, **data)
         return Response(InviteResponse(result).data, status=201)
+
+    async def get(self, request, team_id: UUID):
+        invites = await InviteService.list_invites(team_id=team_id, user_id=request.user.id)
+        return Response({"invites": BaseInviteResponse(invites, many=True).data})
