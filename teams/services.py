@@ -192,7 +192,23 @@ class TeamService:
     @staticmethod
     @transaction.atomic
     def _remove_member_sync(team_id: UUID, user_id: UUID) -> None:
-        """Take the user out of a team and all its channes. Chat-155 (leave) can reuse it."""
+        """Take the user out of a team and all its channes."""
         ChannelMemberRepository.delete_in_team_sync(team_id, user_id)
         TeamMemberRepository.delete_sync(team_id, user_id)
         # TODO(CHAT-172): publish team.member.changed (removed) after commit.
+
+    @staticmethod
+    async def leave(team_id: UUID, user_id: UUID) -> None:
+        """TODO: publish team.member.changed (left) after commit."""
+        await TeamService.require_member(team_id, user_id)
+        await sync_to_async(TeamService._leave_sync)(team_id, user_id)
+
+    @staticmethod
+    @transaction.atomic
+    def _leave_sync(team_id: UUID, user_id: UUID) -> None:
+        """Guard last-owner then reuse _remove_member_sync. Lock ensures two concurrent leaves
+        can't both pass the last-owner check."""
+        owner_ids = TeamMemberRepository.lock_owner_ids_sync(team_id)
+        if user_id in owner_ids and len(owner_ids) == 1:
+            raise Conflict(ErrorCode.LAST_OWNER)
+        TeamService._remove_member_sync(team_id, user_id)
