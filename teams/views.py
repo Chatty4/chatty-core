@@ -5,9 +5,13 @@ from rest_framework.response import Response
 from shared.serializers import validated
 from shared.views import UserAPIView
 from teams.serializers import (
+    ChangeRoleRequest,
     CreateTeamRequest,
     CreateTeamResponse,
+    MemberRoleResponse,
     TeamDetailResponse,
+    TeamMemberResponse,
+    TeamMembersQuery,
     TeamResponse,
     UpdateTeamRequest,
 )
@@ -37,4 +41,24 @@ class TeamDetailView(UserAPIView):
 
     async def delete(self, request, team_id: UUID):
         await TeamService.delete(team_id=team_id, user_id=request.user.id)
+        return Response(status=204)
+
+
+class TeamMembersView(UserAPIView):
+    async def get(self, request, team_id: UUID):
+        params = validated(TeamMembersQuery, request.query_params)
+        members, next_cursor = await TeamService.list_members(team_id, request.user.id, **params)
+        return Response(
+            {"members": TeamMemberResponse(members, many=True).data, "next_cursor": next_cursor}
+        )
+
+
+class TeamMemberDetailView(UserAPIView):
+    async def put(self, request, team_id: UUID, user_id: UUID):
+        data = validated(ChangeRoleRequest, request.data)
+        member = await TeamService.change_role(team_id, request.user.id, user_id, data["role"])
+        return Response(MemberRoleResponse(member).data)
+
+    async def delete(self, request, team_id: UUID, user_id: UUID):
+        await TeamService.remove_member(team_id, request.user.id, user_id)
         return Response(status=204)
