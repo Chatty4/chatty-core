@@ -1,12 +1,18 @@
 from typing import Literal
 from uuid import UUID
 
+from asgiref.sync import sync_to_async
+from django.db import IntegrityError, transaction
+
 from channels import access
+from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
-from channels.schemas import ChannelAccess
+from channels.schemas import ChannelAccess, ChannelDetail, MyChannel
 from shared.codes import ErrorCode
 from shared.exceptions import Conflict, NotFound, PermissionDenied
+from teams.models import Team
 from teams.repositories import TeamMemberRepository
+from teams.services import TeamService
 
 Need = Literal["read", "member", "write", "manage"]
 
@@ -38,3 +44,57 @@ class ChannelService:
             raise PermissionDenied()
         assert team_member is not None  # every need above requires the team
         return ChannelAccess(channel, team_member, channel_member)
+
+    @staticmethod
+    async def get(channel_id: UUID, user_id: UUID) -> ChannelDetail:
+        access = await ChannelService.require_access(channel_id, user_id, "read")
+        member_count = await ChannelMemberRepository.count(channel_id)
+        return ChannelDetail(access.channel, member_count, access.channel_member)
+
+    @staticmethod
+    async def create(team_id: UUID, user_id: UUID, name: str, kind: str, topic: str) -> Channel:
+        team, _ = await TeamService.require_member(team_id, user_id)
+        try:
+            return await sync_to_async(ChannelService._create_sync)(
+                team, user_id, name, kind, topic
+            )
+        except IntegrityError:  # unique_channel_name_per_team, also when two requests race
+            raise Conflict(ErrorCode.CHANNEL_NAME_TAKEN) from None
+
+    @staticmethod
+    @transaction.atomic
+    def _create_sync(team: Team, user_id: UUID, name: str, kind: str, topic: str) -> Channel:
+        channel = ChannelRepository.create_sync(
+            team=team, name=name, kind=kind, is_default=False, created_by_id=user_id, topic=topic
+        )
+        ChannelMemberRepository.create_sync(
+            channel=channel,
+            user_id=user_id,
+            role=ChannelMember.Role.OWNER,
+            notify_level=ChannelMember.NotifyLevel.MENTIONS,
+        )
+        # TODO(CHAT-172): publish membership.changed (added) after commit
+        return channel
+
+    @staticmethod
+    async def list_mine(team_id: UUID, user_id: UUID) -> list[MyChannel]:
+        """The sidebar: every channel and DM I'm in, hidden DMs included"""
+        await TeamService.require_member(team_id, user_id)
+        memberships = await ChannelMemberRepository.list_for_user_in_team(team_id, user_id)
+        dm_ids = [m.channel.id for m in memberships if m.channel.kind == Channel.Kind.DM]
+        dm_members = await ChannelMemberRepository.member_ids_by_channel(dm_ids)
+        return [
+            MyChannel(
+                channel=m.channel,
+                my=m,
+                dm_member_ids=dm_members.get(m.channel.id, []) if m.channel.id in dm_ids else None,
+            )
+            for m in memberships
+        ]
+
+    @staticmethod
+    async def browse(
+        team_id: UUID, user_id: UUID, limit: int, cursor: str | None = None, q: str | None = None
+    ) -> tuple[list[Channel], str | None]:
+        await TeamService.require_member(team_id, user_id)
+        return await ChannelRepository.browse(team_id, user_id, q, cursor, limit)
