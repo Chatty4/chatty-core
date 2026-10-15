@@ -118,3 +118,31 @@ class TeamService:
         if user_ids is not None: # lookup mode: exactly these members, never paginated
             return await TeamMemberRepository.list_members_by_user_ids(team_id, user_ids), None
         return await TeamMemberRepository.list_members(team_id, q, cursor, limit)
+
+    @staticmethod
+    async def change_role(team_id: UUID, user_id: UUID, target_id: UUID, role: str) -> TeamMember:
+        me = await TeamService.require_member(
+            team_id, user_id, roles={TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
+        )
+        return await sync_to_async(TeamService._change_role_sync)(team_id, me.role, target_id, role)
+
+    @staticmethod
+    @transaction.atomic
+    def _change_role_sync(team_id: UUID, my_role: str, target_id: UUID, role: str) -> TeamMember:
+        # Locking the owners first makes two concurent demotions run one after the other,
+        # so they cna't both pas the last-owner check.
+        owner_ids = TeamMemberRepository.lock_owner_ids_sync(team_id)
+        target = TeamMemberRepository.get_member_sync(team_id, target_id)
+        if target is None:
+            raise NotFound(ErrorCode.MEMBER_NOT_FOUND)
+
+        owner = TeamMember.Role.OWNER
+        if my_role != owner and owner in (role, target.role):
+            raise PermissionDenied() # only an owner can make or change an owner
+        if target.role == owner and role != owner and len(owner_ids) == 1:
+            raise Conflict(ErrorCode.LAST_OWNER)
+
+        TeamMemberRepository.update_role_sync(target, role)
+        # TODO(CHAT-172): publish team.member.changed (role_changed) after commit
+
+        return target

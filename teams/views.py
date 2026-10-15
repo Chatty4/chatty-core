@@ -5,8 +5,10 @@ from rest_framework.response import Response
 from shared.serializers import validated
 from shared.views import UserAPIView
 from teams.serializers import (
+    ChangeRoleRequest,
     CreateTeamRequest,
     CreateTeamResponse,
+    MemberRoleResponse,
     TeamMemberResponse,
     TeamMembersQuery,
     TeamResponse,
@@ -38,3 +40,10 @@ class TeamMembersView(UserAPIView):
         return Response(
             {"members": TeamMemberResponse(members, many=True).data, "next_cursor": next_cursor}
         )
+
+
+class TeamMemberDetailView(UserAPIView):
+    async def put(self, request, team_id: UUID, user_id: UUID):
+        data = validated(ChangeRoleRequest, request.data)
+        member = await TeamService.change_role(team_id, request.user.id, user_id, data["role"])
+        return Response(MemberRoleResponse(member).data)

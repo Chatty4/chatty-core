@@ -3,6 +3,7 @@ from uuid import UUID
 from rest_framework import serializers
 
 from shared.pagination import PageQuery
+from teams.models import TeamMember
 
 
 class CreateTeamRequest(serializers.Serializer):
@@ -47,3 +48,12 @@ class TeamMemberResponse(serializers.Serializer):
     role = serializers.CharField()
     is_active = serializers.BooleanField(source="user.is_active")
     joined_at = serializers.DateTimeField()
+
+
+class ChangeRoleRequest(serializers.Serializer):
+    role = serializers.ChoiceField(choices=TeamMember.Role.choices)
+
+class MemberRoleResponse(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    team_id = serializers.UUIDField()
+    role = serializers.CharField()
