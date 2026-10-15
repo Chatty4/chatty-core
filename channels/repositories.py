@@ -45,3 +45,26 @@ class ChannelMemberRepository:
     @staticmethod
     async def get_member(channel_id: UUID, user_id: UUID) -> ChannelMember | None:
         return await ChannelMember.objects.filter(channel_id=channel_id, user_id=user_id).afirst()
+
+    @staticmethod
+    async def list_for_user_in_team(team_id: UUID, user_id: UUID) -> list[ChannelMember]:
+        """My membership in the team's channels, each with its channel loaded."""
+        qs = (
+            ChannelMember.objects.filter(user_id=user_id, channel__team_id=team_id)
+            .select_related("channel")
+            .order_by("channel__name", "channel_id")
+        )
+        return [m async for m in qs]
+
+    @staticmethod
+    async def member_ids_by_channel(channel_ids: list[UUID]) -> dict[UUID, list[UUID]]:
+        """{channel id: [user ids]} for these channels, in the order people joined."""
+        result: dict[UUID, list[UUID]] = {}
+        qs = (
+            ChannelMember.objects.filter(channel_id__in=channel_ids)
+            .order_by("joined_at")
+            .values_list("channel_id", "user_id")
+        )
+        async for channel_id, user_id in qs:
+            result.setdefault(channel_id, []).append(user_id)
+        return result

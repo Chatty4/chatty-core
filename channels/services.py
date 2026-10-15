@@ -7,7 +7,7 @@ from django.db import IntegrityError, transaction
 from channels import access
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
-from channels.schemas import ChannelAccess
+from channels.schemas import ChannelAccess, MyChannel
 from shared.codes import ErrorCode
 from shared.exceptions import Conflict, NotFound, PermissionDenied
 from teams.models import Team
@@ -69,3 +69,19 @@ class ChannelService:
         )
         # TODO(CHAT-172): publish membership.changed (added) after commit
         return channel
+
+    @staticmethod
+    async def list_mine(team_id: UUID, user_id: UUID) -> list[MyChannel]:
+        """The sidebar: every channel and DM I'm in, hidden DMs included"""
+        await TeamService.require_member(team_id, user_id)
+        memberships = await ChannelMemberRepository.list_for_user_in_team(team_id, user_id)
+        dm_ids = [m.channel.id for m in memberships if m.channel.kind == Channel.Kind.DM]
+        dm_members = await ChannelMemberRepository.member_ids_by_channel(dm_ids)
+        return [
+            MyChannel(
+                channel=m.channel,
+                my=m,
+                dm_member_ids=dm_members.get(m.channel.id, []) if m.channel.id in dm_ids else None,
+            )
+            for m in memberships
+        ]

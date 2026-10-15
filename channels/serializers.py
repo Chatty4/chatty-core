@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from channels.models import Channel
+from channels.schemas import MyChannel
 
 
 class CreateChannelRequest(serializers.Serializer):
@@ -22,3 +23,29 @@ class ChannelResponse(serializers.Serializer):
 
     def get_archived(self, channel: Channel) -> bool:
         return channel.archived_at is not None
+
+class MySettingsResponse(serializers.Serializer):
+    role = serializers.CharField()
+    notify_level = serializers.CharField()
+    muted = serializers.BooleanField()
+    hidden = serializers.BooleanField()
+
+
+class MyChannelResponse(serializers.Serializer):
+    id = serializers.UUIDField(source="channel.id")
+    kind = serializers.CharField(source="channel.kind")
+    name = serializers.SerializerMethodField()
+    topic = serializers.SerializerMethodField()
+    is_default = serializers.BooleanField(source="channel.is_default")
+    archived = serializers.SerializerMethodField()
+    dm_member_ids = serializers.ListField(child=serializers.UUIDField(), allow_null=True)
+    my = MySettingsResponse()
+
+    def get_name(self, item: MyChannel) -> str | None:
+        return None if item.channel.kind == Channel.Kind.DM else item.channel.name
+
+    def get_topic(self, item: MyChannel) -> str | None:
+        return None if item.channel.kind == Channel.Kind.DM else item.channel.topic
+
+    def get_archived(self, item: MyChannel) -> bool:
+        return item.channel.archived_at is not None
