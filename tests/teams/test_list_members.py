@@ -112,6 +112,7 @@ async def test_outsider_gets_403(async_client, team):
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "not_a_team_member"
 
+
 async def ids_by_name(team) -> dict[str, str]:
     return {
         m.user.display_name: str(m.user.id)

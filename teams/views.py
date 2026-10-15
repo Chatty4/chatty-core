@@ -9,9 +9,11 @@ from teams.serializers import (
     CreateTeamRequest,
     CreateTeamResponse,
     MemberRoleResponse,
+    TeamDetailResponse,
     TeamMemberResponse,
     TeamMembersQuery,
     TeamResponse,
+    UpdateTeamRequest,
 )
 from teams.services import TeamService
 
@@ -30,7 +32,16 @@ class TeamsView(UserAPIView):
 class TeamDetailView(UserAPIView):
     async def get(self, request, team_id: UUID):
         result = await TeamService.get(team_id=team_id, user_id=request.user.id)
-        return Response(TeamResponse(result).data)
+        return Response(TeamDetailResponse(result).data)
+
+    async def put(self, request, team_id: UUID):
+        data = validated(UpdateTeamRequest, request.data)
+        result = await TeamService.update(**data, team_id=team_id, user_id=request.user.id)
+        return Response(TeamDetailResponse(result).data)
+
+    async def delete(self, request, team_id: UUID):
+        await TeamService.delete(team_id=team_id, user_id=request.user.id)
+        return Response(status=204)
 
 
 class TeamMembersView(UserAPIView):

@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
+from django.utils import timezone
 
 from shared.pagination import paginate
 from teams.models import Team, TeamMember
@@ -46,6 +47,20 @@ class TeamRepository:
         )
 
         return [team async for team in queryset]
+
+    @staticmethod
+    async def update(team: Team, name: str, icon_id: UUID | None) -> Team:
+        """Update and return the team's name and icon"""
+        team.name = name
+        team.icon_id = icon_id
+        await team.asave(update_fields=["name", "icon_id"])
+        return team
+
+    @staticmethod
+    async def delete(team: Team) -> None:
+        """Soft delete team."""
+        team.deleted_at = timezone.now()
+        await team.asave(update_fields=["deleted_at"])
 
 
 class TeamMemberRepository:

@@ -23,6 +23,21 @@ class CreateTeamResponse(TeamResponse):
     general_channel_id = serializers.UUIDField()
 
 
+class TeamDetailResponse(serializers.Serializer):
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    icon_file_id = serializers.UUIDField(allow_null=True)
+    my_role = serializers.CharField()
+    member_count = serializers.IntegerField()
+    created_by = serializers.UUIDField(allow_null=True)
+    created_at = serializers.DateTimeField()
+
+
+class UpdateTeamRequest(serializers.Serializer):
+    name = serializers.CharField(min_length=1, max_length=80)
+    icon_file_id = serializers.UUIDField(allow_null=True)
+
+
 class TeamMembersQuery(PageQuery):
     q = serializers.CharField(required=False, allow_blank=True)
     user_ids = serializers.CharField(required=False)
@@ -52,6 +67,7 @@ class TeamMemberResponse(serializers.Serializer):
 
 class ChangeRoleRequest(serializers.Serializer):
     role = serializers.ChoiceField(choices=TeamMember.Role.choices)
+
 
 class MemberRoleResponse(serializers.Serializer):
     user_id = serializers.UUIDField()

@@ -9,7 +9,7 @@ from shared.codes import ErrorCode
 from shared.exceptions import Conflict, NotFound, PermissionDenied
 from teams.models import Team, TeamMember
 from teams.repositories import TeamMemberRepository, TeamRepository
-from teams.schemas import CreateTeamResult, TeamResult
+from teams.schemas import CreateTeamResult, TeamDetailResult, TeamResult
 
 MANAGERS = {TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
 
@@ -79,33 +79,63 @@ class TeamService:
         ]
 
     @staticmethod
-    async def get(team_id: UUID, user_id: UUID) -> TeamResult:
-        team = await TeamService._get_team_or_404(team_id)
-        member = await TeamService._get_member_or_403(team_id, user_id)
+    async def get(team_id: UUID, user_id: UUID) -> TeamDetailResult:
+        team, member = await TeamService.require_member(team_id, user_id)
         count = await TeamMemberRepository.count_members(team_id)
-        return TeamResult(
+        return TeamDetailResult(
             id=team.id,
             name=team.name,
             icon_file_id=team.icon_id,
-            role=member.role,
+            my_role=member.role,
             member_count=count,
+            created_by=team.created_by_id,  # type: ignore[attr-defined]
             created_at=team.created_at,
         )
 
     @staticmethod
+    async def update(
+        team_id: UUID, user_id: UUID, name: str, icon_file_id: UUID | None
+    ) -> TeamDetailResult:
+        """
+        TODO: validate icon_file_id against the files model (ready,
+        team_icon purpose, same team).
+        """
+        team, member = await TeamService.require_member(
+            team_id, user_id, roles={TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
+        )
+        team = await TeamRepository.update(team, name=name, icon_id=icon_file_id)
+        count = await TeamMemberRepository.count_members(team_id)
+        return TeamDetailResult(
+            id=team.id,
+            name=team.name,
+            icon_file_id=team.icon_id,
+            my_role=member.role,
+            member_count=count,
+            created_by=team.created_by_id,  # type: ignore[attr-defined]
+            created_at=team.created_at,
+        )
+
+    @staticmethod
+    async def delete(team_id: UUID, user_id: UUID) -> None:
+        """TODO: publish team.deleted event after commit."""
+        team, _ = await TeamService.require_member(team_id, user_id, roles={TeamMember.Role.OWNER})
+        await TeamRepository.delete(team)
+
+    @staticmethod
     async def require_member(
         team_id: UUID, user_id: UUID, roles: set[TeamMember.Role] | None = None
-    ) -> TeamMember:
+    ) -> tuple[Team, TeamMember]:
         """The user's membership in a live team. Every /teams/{team_id}/... endpoint starts here.
 
         Raises team_not_found, not_a_team_member, or forbidden when `roles` is given and the
         user's role isn't in it.
         """
-        await TeamService._get_team_or_404(team_id)
+        team = await TeamService._get_team_or_404(team_id)
         member = await TeamService._get_member_or_403(team_id, user_id)
         if roles is not None and member.role not in roles:
             raise PermissionDenied()
-        return member
+
+        return team, member
 
     @staticmethod
     async def list_members(
@@ -123,7 +153,7 @@ class TeamService:
 
     @staticmethod
     async def change_role(team_id: UUID, user_id: UUID, target_id: UUID, role: str) -> TeamMember:
-        me = await TeamService.require_member(team_id, user_id, roles=MANAGERS)
+        _, me = await TeamService.require_member(team_id, user_id, roles=MANAGERS)
         return await sync_to_async(TeamService._change_role_sync)(team_id, me.role, target_id, role)
 
     @staticmethod
@@ -149,7 +179,7 @@ class TeamService:
 
     @staticmethod
     async def remove_member(team_id: UUID, user_id: UUID, target_id: UUID) -> None:
-        me = await TeamService.require_member(team_id, user_id, roles=MANAGERS)
+        _, me = await TeamService.require_member(team_id, user_id, roles=MANAGERS)
         if target_id == user_id:
             raise Conflict(ErrorCode.USE_LEAVE)
         target = await TeamMemberRepository.get_member(team_id, target_id)
