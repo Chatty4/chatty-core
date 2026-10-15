@@ -104,3 +104,10 @@ class TeamService:
         if roles is not None and member.role not in roles:
             raise PermissionDenied()
         return member
+
+    @staticmethod
+    async def list_members(
+        team_id: UUID, user_id: UUID, limit: int, cursor: str | None = None, q: str | None = None
+    ) -> tuple[list[TeamMember], str | None]:
+        await TeamService.require_member(team_id, user_id)
+        return await TeamMemberRepository.list_members(team_id, q, cursor, limit)

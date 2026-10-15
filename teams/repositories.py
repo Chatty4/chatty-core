@@ -1,7 +1,8 @@
 from uuid import UUID
 
-from django.db.models import Count, IntegerField, OuterRef, Subquery
+from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
 
+from shared.pagination import paginate
 from teams.models import Team, TeamMember
 
 
@@ -62,3 +63,17 @@ class TeamMemberRepository:
     async def count_members(team_id: UUID) -> int:
         """Return the total number of members in a team."""
         return await TeamMember.objects.filter(team_id=team_id).acount()
+
+    @staticmethod
+    async def list_members(
+        team_id: UUID, q: str | None, cursor: str | None, limit: int
+    ) -> tuple[list[TeamMember], str | None]:
+        """A page of the team directory, sorted by display name then user id."""
+        qs = TeamMember.objects.filter(team_id=team_id).select_related("user")
+        if q:
+            qs = qs.filter(
+                Q(user__display_name__istartswith=q) | Q(user__display_name__icontains=f" {q}")
+            )
+        return await paginate(
+            qs, ("user__display_name", "user_id"), cursor, limit, "team_members", q
+        )
