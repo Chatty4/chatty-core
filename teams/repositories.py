@@ -125,6 +125,11 @@ class TeamMemberRepository:
 
 class InviteRepository:
     @staticmethod
+    async def get_by_id(invite_id: UUID) -> Invite | None:
+        """Return an invite by id, or None."""
+        return await Invite.objects.filter(id=invite_id).afirst()
+
+    @staticmethod
     def _active_qs(team_id: UUID) -> QuerySet[Invite]:
         """Base queryset for active invites: not revoked, not expired, not used up."""
         now = timezone.now()
@@ -166,3 +171,9 @@ class InviteRepository:
         if created_by_id is not None:
             qs = qs.filter(created_by_id=created_by_id)
         return [invite async for invite in qs]
+
+    @staticmethod
+    async def revoke(invite: Invite) -> None:
+        """Set revoked_at to now."""
+        invite.revoked_at = timezone.now()
+        await invite.asave(update_fields=["revoked_at"])

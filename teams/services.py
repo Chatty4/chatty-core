@@ -9,7 +9,7 @@ from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
 from shared.codes import ErrorCode
 from shared.exceptions import Conflict, NotFound, PermissionDenied
-from teams.models import Team, TeamMember
+from teams.models import Invite, Team, TeamMember
 from teams.repositories import InviteRepository, TeamMemberRepository, TeamRepository
 from teams.schemas import (
     BaseInviteResult,
@@ -224,6 +224,13 @@ class TeamService:
 
 class InviteService:
     @staticmethod
+    async def _get_invite_or_404(invite_id: UUID) -> Invite:
+        invite = await InviteRepository.get_by_id(invite_id)
+        if invite is None:
+            raise NotFound(ErrorCode.INVITE_NOT_FOUND)
+        return invite
+
+    @staticmethod
     async def create(team_id: UUID, user_id: UUID, max_age: int, max_uses: int) -> InviteResult:
         await TeamService.require_member(team_id, user_id)
         return await sync_to_async(InviteService._create_sync)(team_id, user_id, max_age, max_uses)
@@ -277,3 +284,19 @@ class InviteService:
             )
             for invite in invites
         ]
+
+    @staticmethod
+    async def revoke(invite_id: UUID, user_id: UUID) -> None:
+        """
+        Revoke an invite. Creator, owner or admin only.
+        Idempotent: already-revoked returns silently.
+        """
+        invite = await InviteService._get_invite_or_404(invite_id)
+        _, member = await TeamService.require_member(invite.team_id, user_id)  # type: ignore[attr-defined]
+
+        if invite.created_by_id != user_id and member.role not in MANAGERS:  # type: ignore[attr-defined]
+            raise PermissionDenied()
+
+        if invite.revoked_at is not None:
+            return
+        await InviteRepository.revoke(invite)

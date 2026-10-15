@@ -82,3 +82,9 @@ class TeamInvitesView(UserAPIView):
     async def get(self, request, team_id: UUID):
         invites = await InviteService.list_invites(team_id=team_id, user_id=request.user.id)
         return Response({"invites": BaseInviteResponse(invites, many=True).data})
+
+
+class InviteDetailView(UserAPIView):
+    async def delete(self, request, invite_id: UUID):
+        await InviteService.revoke(invite_id=invite_id, user_id=request.user.id)
+        return Response(status=204)

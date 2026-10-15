@@ -1,6 +1,7 @@
 from django.urls import path
 
 from teams.views import (
+    InviteDetailView,
     LeaveTeamView,
     TeamDetailView,
     TeamInvitesView,
@@ -14,6 +15,7 @@ urlpatterns = [
     path("teams/<uuid:team_id>", TeamDetailView.as_view(), name="team-detail"),
     path("teams/<uuid:team_id>/leave", LeaveTeamView.as_view(), name="team-leave"),
     path("teams/<uuid:team_id>/invites", TeamInvitesView.as_view(), name="team-invites"),
+    path("invites/<uuid:invite_id>", InviteDetailView.as_view(), name="invite-detail"),
     path("teams/<uuid:team_id>/members", TeamMembersView.as_view(), name="team-members"),
     path(
         "teams/<uuid:team_id>/members/<uuid:user_id>",
