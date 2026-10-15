@@ -47,3 +47,7 @@ class TeamMemberDetailView(UserAPIView):
         data = validated(ChangeRoleRequest, request.data)
         member = await TeamService.change_role(team_id, request.user.id, user_id, data["role"])
         return Response(MemberRoleResponse(member).data)
+
+    async def delete(self, request, team_id: UUID, user_id: UUID):
+        await TeamService.remove_member(team_id, request.user.id, user_id)
+        return Response(status=204)

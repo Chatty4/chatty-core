@@ -11,6 +11,8 @@ from teams.models import Team, TeamMember
 from teams.repositories import TeamMemberRepository, TeamRepository
 from teams.schemas import CreateTeamResult, TeamResult
 
+MANAGERS = {TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
+
 
 class TeamService:
     @staticmethod
@@ -115,15 +117,13 @@ class TeamService:
         user_ids: list[UUID] | None = None,
     ) -> tuple[list[TeamMember], str | None]:
         await TeamService.require_member(team_id, user_id)
-        if user_ids is not None: # lookup mode: exactly these members, never paginated
+        if user_ids is not None:  # lookup mode: exactly these members, never paginated
             return await TeamMemberRepository.list_members_by_user_ids(team_id, user_ids), None
         return await TeamMemberRepository.list_members(team_id, q, cursor, limit)
 
     @staticmethod
     async def change_role(team_id: UUID, user_id: UUID, target_id: UUID, role: str) -> TeamMember:
-        me = await TeamService.require_member(
-            team_id, user_id, roles={TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
-        )
+        me = await TeamService.require_member(team_id, user_id, roles=MANAGERS)
         return await sync_to_async(TeamService._change_role_sync)(team_id, me.role, target_id, role)
 
     @staticmethod
@@ -138,7 +138,7 @@ class TeamService:
 
         owner = TeamMember.Role.OWNER
         if my_role != owner and owner in (role, target.role):
-            raise PermissionDenied() # only an owner can make or change an owner
+            raise PermissionDenied()  # only an owner can make or change an owner
         if target.role == owner and role != owner and len(owner_ids) == 1:
             raise Conflict(ErrorCode.LAST_OWNER)
 
@@ -146,3 +146,23 @@ class TeamService:
         # TODO(CHAT-172): publish team.member.changed (role_changed) after commit
 
         return target
+
+    @staticmethod
+    async def remove_member(team_id: UUID, user_id: UUID, target_id: UUID) -> None:
+        me = await TeamService.require_member(team_id, user_id, roles=MANAGERS)
+        if target_id == user_id:
+            raise Conflict(ErrorCode.USE_LEAVE)
+        target = await TeamMemberRepository.get_member(team_id, target_id)
+        if target is None:
+            raise NotFound(ErrorCode.MEMBER_NOT_FOUND)
+        if me.role != TeamMember.Role.OWNER and target.role == TeamMember.Role.OWNER:
+            raise PermissionDenied()  # admins can't remove owners
+        await sync_to_async(TeamService._remove_member_sync)(team_id, target_id)
+
+    @staticmethod
+    @transaction.atomic
+    def _remove_member_sync(team_id: UUID, user_id: UUID) -> None:
+        """Take the user out of a team and all its channes. Chat-155 (leave) can reuse it."""
+        ChannelMemberRepository.delete_in_team_sync(team_id, user_id)
+        TeamMemberRepository.delete_sync(team_id, user_id)
+        # TODO(CHAT-172): publish team.member.changed (removed) after commit.

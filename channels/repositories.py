@@ -22,3 +22,8 @@ class ChannelMemberRepository:
         return ChannelMember.objects.create(
             channel=channel, user_id=user_id, role=role, notify_level=notify_level
         )
+
+    @staticmethod
+    def delete_in_team_sync(team_id: UUID, user_id: UUID) -> None:
+        """Remove the user from every channel of the team, DMs included."""
+        ChannelMember.objects.filter(channel__team_id=team_id, user_id=user_id).delete()

@@ -101,3 +101,7 @@ class TeamMemberRepository:
     def update_role_sync(member: TeamMember, role: str) -> None:
         member.role = role
         member.save(update_fields=["role"])
+
+    @staticmethod
+    def delete_sync(team_id: UUID, user_id: UUID) -> None:
+        TeamMember.objects.filter(team_id=team_id, user_id=user_id).delete()
