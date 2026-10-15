@@ -7,7 +7,7 @@ from django.db import IntegrityError, transaction
 from channels import access
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
-from channels.schemas import ChannelAccess, MyChannel
+from channels.schemas import ChannelAccess, ChannelDetail, MyChannel
 from shared.codes import ErrorCode
 from shared.exceptions import Conflict, NotFound, PermissionDenied
 from teams.models import Team
@@ -44,6 +44,12 @@ class ChannelService:
             raise PermissionDenied()
         assert team_member is not None  # every need above requires the team
         return ChannelAccess(channel, team_member, channel_member)
+
+    @staticmethod
+    async def get(channel_id: UUID, user_id: UUID) -> ChannelDetail:
+        access = await ChannelService.require_access(channel_id, user_id, "read")
+        member_count = await ChannelMemberRepository.count(channel_id)
+        return ChannelDetail(access.channel, member_count, access.channel_member)
 
     @staticmethod
     async def create(team_id: UUID, user_id: UUID, name: str, kind: str, topic: str) -> Channel:

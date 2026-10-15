@@ -84,3 +84,7 @@ class ChannelMemberRepository:
         async for channel_id, user_id in qs:
             result.setdefault(channel_id, []).append(user_id)
         return result
+
+    @staticmethod
+    async def count(channel_id: UUID) -> int:
+        return await ChannelMember.objects.filter(channel_id=channel_id).acount()

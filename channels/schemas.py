@@ -21,3 +21,10 @@ class MyChannel:
     channel: Channel
     my: ChannelMember
     dm_member_ids: list[UUID] | None
+
+
+@dataclass
+class ChannelDetail:
+    channel: Channel
+    member_count: int
+    my: ChannelMember | None  # None when I can read the channel but haven't joined it

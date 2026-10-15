@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from channels.models import Channel
-from channels.schemas import MyChannel
+from channels.schemas import ChannelDetail, MyChannel
 from shared.pagination import PageQuery
 
 
@@ -24,6 +24,7 @@ class ChannelResponse(serializers.Serializer):
 
     def get_archived(self, channel: Channel) -> bool:
         return channel.archived_at is not None
+
 
 class MySettingsResponse(serializers.Serializer):
     role = serializers.CharField()
@@ -51,8 +52,10 @@ class MyChannelResponse(serializers.Serializer):
     def get_archived(self, item: MyChannel) -> bool:
         return item.channel.archived_at is not None
 
+
 class BrowseChannelsQuery(PageQuery):
     q = serializers.CharField(required=False, allow_blank=True)
+
 
 class BrowseChannelResponse(serializers.Serializer):
     id = serializers.UUIDField()
@@ -63,3 +66,14 @@ class BrowseChannelResponse(serializers.Serializer):
 
     def get_archived(self, channel: Channel) -> bool:
         return channel.archived_at is not None
+
+
+class ChannelDetailResponse(serializers.Serializer):
+    """ChannelResponse plus member_count and my (null when I haven't joined)."""
+
+    def to_representation(self, detail: ChannelDetail) -> dict:
+        return {
+            **ChannelResponse(detail.channel).data,
+            "member_count": detail.member_count,
+            "my": MySettingsResponse(detail.my).data if detail.my else None,
+        }

@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from channels.serializers import (
     BrowseChannelResponse,
     BrowseChannelsQuery,
+    ChannelDetailResponse,
     ChannelResponse,
     CreateChannelRequest,
     MyChannelResponse,
@@ -12,6 +13,12 @@ from channels.serializers import (
 from channels.services import ChannelService
 from shared.serializers import validated
 from shared.views import UserAPIView
+
+
+class ChannelDetailView(UserAPIView):
+    async def get(self, request, channel_id: UUID):
+        detail = await ChannelService.get(channel_id, request.user.id)
+        return Response(ChannelDetailResponse(detail).data)
 
 
 class TeamChannelsView(UserAPIView):
