@@ -7,11 +7,16 @@ from teams.models import Team
 class ChannelRepository:
     @staticmethod
     def create_sync(
-        team: Team, name: str, kind: str, is_default: bool, created_by_id: UUID
+        team: Team, name: str, kind: str, is_default: bool, created_by_id: UUID, topic: str = ""
     ) -> Channel:
         """Create and return a channel."""
         return Channel.objects.create(
-            team=team, name=name, kind=kind, is_default=is_default, created_by_id=created_by_id
+            team=team,
+            name=name,
+            kind=kind,
+            is_default=is_default,
+            created_by_id=created_by_id,
+            topic=topic,
         )
 
     @staticmethod
