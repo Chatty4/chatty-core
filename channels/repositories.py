@@ -14,6 +14,15 @@ class ChannelRepository:
             team=team, name=name, kind=kind, is_default=is_default, created_by_id=created_by_id
         )
 
+    @staticmethod
+    async def get_with_team(channel_id: UUID) -> Channel | None:
+        """The channel with its team loaded, or None if it doesn't exist or its team was deleted."""
+        return (
+            await Channel.objects.select_related("team")
+            .filter(id=channel_id, team__deleted_at__isnull=True)
+            .afirst()
+        )
+
 
 class ChannelMemberRepository:
     @staticmethod
@@ -27,3 +36,7 @@ class ChannelMemberRepository:
     def delete_in_team_sync(team_id: UUID, user_id: UUID) -> None:
         """Remove the user from every channel of the team, DMs included."""
         ChannelMember.objects.filter(channel__team_id=team_id, user_id=user_id).delete()
+
+    @staticmethod
+    async def get_member(channel_id: UUID, user_id: UUID) -> ChannelMember | None:
+        return await ChannelMember.objects.filter(channel_id=channel_id, user_id=user_id).afirst()
