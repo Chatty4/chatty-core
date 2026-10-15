@@ -5,6 +5,9 @@ from rest_framework import serializers
 from shared.pagination import PageQuery
 from teams.models import TeamMember
 
+_MAX_AGE_CHOICES = {0, 1800, 3600, 21600, 43200, 86400, 604800}
+_MAX_USES_CHOICES = {0, 1, 5, 10, 25, 50, 100}
+
 
 class CreateTeamRequest(serializers.Serializer):
     name = serializers.CharField(min_length=1, max_length=80)
@@ -73,3 +76,33 @@ class MemberRoleResponse(serializers.Serializer):
     user_id = serializers.UUIDField()
     team_id = serializers.UUIDField()
     role = serializers.CharField()
+
+
+# --- INVITES ---
+class CreateInviteRequest(serializers.Serializer):
+    max_age = serializers.IntegerField(default=604800)
+    max_uses = serializers.IntegerField(default=0)
+
+    def validate_max_age(self, value: int) -> int:
+        if value not in _MAX_AGE_CHOICES:
+            raise serializers.ValidationError(
+                "Must be one of: 0, 1800, 3600, 21600, 43200, 86400, 604800"
+            )
+        return value
+
+    def validate_max_uses(self, value: int) -> int:
+        if value not in _MAX_USES_CHOICES:
+            raise serializers.ValidationError("Must be one of: 0, 1, 5, 10, 25, 50, 100")
+        return value
+
+
+class InviteResponse(serializers.Serializer):
+    id = serializers.UUIDField()
+    code = serializers.CharField()
+    url = serializers.CharField()
+    team_id = serializers.UUIDField()
+    created_by = serializers.UUIDField(allow_null=True)
+    max_uses = serializers.IntegerField()
+    uses = serializers.IntegerField()
+    expires_at = serializers.DateTimeField(allow_null=True)
+    created_at = serializers.DateTimeField()

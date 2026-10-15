@@ -1,6 +1,8 @@
+import secrets
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.db import transaction
 
 from channels.models import Channel, ChannelMember
@@ -8,8 +10,8 @@ from channels.repositories import ChannelMemberRepository, ChannelRepository
 from shared.codes import ErrorCode
 from shared.exceptions import Conflict, NotFound, PermissionDenied
 from teams.models import Team, TeamMember
-from teams.repositories import TeamMemberRepository, TeamRepository
-from teams.schemas import CreateTeamResult, TeamDetailResult, TeamResult
+from teams.repositories import InviteRepository, TeamMemberRepository, TeamRepository
+from teams.schemas import CreateTeamResult, InviteResult, TeamDetailResult, TeamResult
 
 MANAGERS = {TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
 
@@ -212,3 +214,39 @@ class TeamService:
         if user_id in owner_ids and len(owner_ids) == 1:
             raise Conflict(ErrorCode.LAST_OWNER)
         TeamService._remove_member_sync(team_id, user_id)
+
+
+class InviteService:
+    @staticmethod
+    async def create(team_id: UUID, user_id: UUID, max_age: int, max_uses: int) -> InviteResult:
+        await TeamService.require_member(team_id, user_id)
+        return await sync_to_async(InviteService._create_sync)(team_id, user_id, max_age, max_uses)
+
+    @staticmethod
+    @transaction.atomic
+    def _create_sync(team_id: UUID, user_id: UUID, max_age: int, max_uses: int) -> InviteResult:
+        """Lock the team row, enforce the 100-invite cap, then insert."""
+        if InviteRepository.count_active_sync(team_id) >= 100:
+            raise Conflict(ErrorCode.INVITE_LIMIT_REACHED)
+        
+        code = InviteService._unique_code_sync()
+        invite = InviteRepository.create_sync(team_id, user_id, code, max_age, max_uses)
+        return InviteResult(
+            id=invite.id,
+            code=invite.code,
+            url=f"{settings.APP_URL}/invite/{invite.code}",
+            team_id=invite.team_id,  # type: ignore[attr-defined]
+            created_by=invite.created_by_id,  # type: ignore[attr-defined]
+            max_uses=invite.max_uses,
+            uses=invite.uses,
+            expires_at=invite.expires_at,
+            created_at=invite.created_at,
+        )
+
+    @staticmethod
+    def _unique_code_sync() -> str:
+        """Generate an 8-char code that doesn't exist yet."""
+        while True:
+            code = secrets.token_urlsafe(6)
+            if not InviteRepository.code_exists_sync(code):
+                return code

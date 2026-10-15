@@ -1,10 +1,11 @@
+from datetime import timedelta
 from uuid import UUID
 
-from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
+from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery
 from django.utils import timezone
 
 from shared.pagination import paginate
-from teams.models import Team, TeamMember
+from teams.models import Invite, Team, TeamMember
 
 
 class TeamRepository:
@@ -120,3 +121,38 @@ class TeamMemberRepository:
     @staticmethod
     def delete_sync(team_id: UUID, user_id: UUID) -> None:
         TeamMember.objects.filter(team_id=team_id, user_id=user_id).delete()
+
+
+class InviteRepository:
+    @staticmethod
+    def count_active_sync(team_id: UUID) -> int:
+        """Count active invites for the team. Locks the team row so a concurrent create
+        can't race past the 100-invite cap check."""
+        Team.objects.select_for_update().get(id=team_id)
+        now = timezone.now()
+        return (
+            Invite.objects.filter(team_id=team_id)
+            .filter(
+                revoked_at__isnull=True,
+            )
+            .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+            .filter(Q(max_uses=0) | Q(uses__lt=F("max_uses")))
+            .count()
+        )
+
+    @staticmethod
+    def code_exists_sync(code: str) -> bool:
+        """Check whether an invite with this code already exists."""
+        return Invite.objects.filter(code=code).exists()
+
+    @staticmethod
+    def create_sync(team_id: UUID, user_id: UUID, code: str, max_age: int, max_uses: int) -> Invite:
+        """Insert and return a new invite. Computes expires_at from max_age (null when 0)."""
+        expires_at = timezone.now() + timedelta(seconds=max_age) if max_age else None
+        return Invite.objects.create(
+            team_id=team_id,
+            created_by_id=user_id,
+            code=code,
+            max_uses=max_uses,
+            expires_at=expires_at,
+        )

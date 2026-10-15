@@ -27,3 +27,16 @@ class TeamDetailResult:
     member_count: int
     created_by: UUID | None
     created_at: datetime
+
+
+@dataclass
+class InviteResult:
+    id: UUID
+    code: str
+    url: str
+    team_id: UUID
+    created_by: UUID | None
+    max_uses: int
+    uses: int
+    expires_at: datetime | None
+    created_at: datetime
