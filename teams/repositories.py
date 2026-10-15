@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from django.db.models import Count, IntegerField, OuterRef, Subquery
+from django.utils import timezone
 
 from teams.models import Team, TeamMember
 
@@ -53,6 +54,12 @@ class TeamRepository:
         team.icon_id = icon_id
         await team.asave(update_fields=["name", "icon_id"])
         return team
+
+    @staticmethod
+    async def delete(team: Team) -> None:
+        """Soft delete team."""
+        team.deleted_at = timezone.now()
+        await team.asave(update_fields=["deleted_at"])
 
 
 class TeamMemberRepository:

@@ -94,6 +94,10 @@ class TeamService:
     async def update(
         team_id: UUID, user_id: UUID, name: str, icon_file_id: UUID | None
     ) -> TeamDetailResult:
+        """
+        TODO: validate icon_file_id against the files model (ready,
+        team_icon purpose, same team).
+        """
         team, member = await TeamService.require_member(
             team_id, user_id, roles={TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
         )
@@ -108,6 +112,12 @@ class TeamService:
             created_by=team.created_by_id,  # type: ignore[attr-defined]
             created_at=team.created_at,
         )
+
+    @staticmethod
+    async def delete(team_id: UUID, user_id: UUID) -> None:
+        """TODO: publish team.deleted event after commit."""
+        team, _ = await TeamService.require_member(team_id, user_id, roles={TeamMember.Role.OWNER})
+        await TeamRepository.delete(team)
 
     @staticmethod
     async def require_member(

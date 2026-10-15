@@ -34,3 +34,7 @@ class TeamDetailView(UserAPIView):
         data = validated(UpdateTeamRequest, request.data)
         result = await TeamService.update(**data, team_id=team_id, user_id=request.user.id)
         return Response(TeamDetailResponse(result).data)
+
+    async def delete(self, request, team_id: UUID):
+        await TeamService.delete(team_id=team_id, user_id=request.user.id)
+        return Response(status=204)
