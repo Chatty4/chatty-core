@@ -34,6 +34,6 @@ async def test_role_inside_roles_passes():
     owner = await make_user("ana@example.com")
     team = await TeamService.create("Backend", owner.id)
 
-    member = await TeamService.require_member(team.id, owner.id, roles=ADMINS)
+    _team, member = await TeamService.require_member(team.id, owner.id, roles=ADMINS)
 
     assert member.role == TeamMember.Role.OWNER

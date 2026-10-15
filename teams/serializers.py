@@ -26,3 +26,8 @@ class TeamDetailResponse(serializers.Serializer):
     member_count = serializers.IntegerField()
     created_by = serializers.UUIDField(allow_null=True)
     created_at = serializers.DateTimeField()
+
+
+class UpdateTeamRequest(serializers.Serializer):
+    name = serializers.CharField(min_length=1, max_length=80)
+    icon_file_id = serializers.UUIDField(allow_null=True)

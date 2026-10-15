@@ -46,6 +46,14 @@ class TeamRepository:
 
         return [team async for team in queryset]
 
+    @staticmethod
+    async def update(team: Team, name: str, icon_id: UUID | None) -> Team:
+        """Update and return the team's name and icon"""
+        team.name = name
+        team.icon_id = icon_id
+        await team.asave(update_fields=["name", "icon_id"])
+        return team
+
 
 class TeamMemberRepository:
     @staticmethod
