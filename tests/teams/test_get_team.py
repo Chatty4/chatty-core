@@ -46,8 +46,9 @@ async def test_get_team_returns_correct_fields(async_client, user, team, auth):
     assert body["id"] == str(team.id)
     assert body["name"] == "Backend"
     assert body["icon_file_id"] is None
-    assert body["role"] == "owner"
+    assert body["my_role"] == "owner"
     assert body["member_count"] == 1
+    assert body["created_by"] == str(user.id)
     assert body["created_at"]
 
 
@@ -72,7 +73,7 @@ async def test_get_team_role_reflects_user_role(async_client, team, auth):
 
     response = await async_client.get(url(team.id), headers=other_auth)
 
-    assert response.json()["role"] == "member"
+    assert response.json()["my_role"] == "member"
 
 
 async def test_get_team_not_found(async_client, auth):

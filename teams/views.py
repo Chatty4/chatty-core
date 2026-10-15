@@ -4,7 +4,12 @@ from rest_framework.response import Response
 
 from shared.serializers import validated
 from shared.views import UserAPIView
-from teams.serializers import CreateTeamRequest, CreateTeamResponse, TeamResponse
+from teams.serializers import (
+    CreateTeamRequest,
+    CreateTeamResponse,
+    TeamDetailResponse,
+    TeamResponse,
+)
 from teams.services import TeamService
 
 
@@ -22,4 +27,4 @@ class TeamsView(UserAPIView):
 class TeamDetailView(UserAPIView):
     async def get(self, request, team_id: UUID):
         result = await TeamService.get(team_id=team_id, user_id=request.user.id)
-        return Response(TeamResponse(result).data)
+        return Response(TeamDetailResponse(result).data)

@@ -9,7 +9,7 @@ from shared.codes import ErrorCode
 from shared.exceptions import Conflict, NotFound, PermissionDenied
 from teams.models import Team, TeamMember
 from teams.repositories import TeamMemberRepository, TeamRepository
-from teams.schemas import CreateTeamResult, TeamResult
+from teams.schemas import CreateTeamResult, TeamDetailResult, TeamResult
 
 
 class TeamService:
@@ -77,16 +77,17 @@ class TeamService:
         ]
 
     @staticmethod
-    async def get(team_id: UUID, user_id: UUID) -> TeamResult:
+    async def get(team_id: UUID, user_id: UUID) -> TeamDetailResult:
         team = await TeamService._get_team_or_404(team_id)
         member = await TeamService._get_member_or_403(team_id, user_id)
         count = await TeamMemberRepository.count_members(team_id)
-        return TeamResult(
+        return TeamDetailResult(
             id=team.id,
             name=team.name,
             icon_file_id=team.icon_id,
-            role=member.role,
+            my_role=member.role,
             member_count=count,
+            created_by=team.created_by_id,  # type: ignore[attr-defined]
             created_at=team.created_at,
         )
 

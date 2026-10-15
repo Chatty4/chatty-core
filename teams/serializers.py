@@ -16,3 +16,13 @@ class TeamResponse(serializers.Serializer):
 
 class CreateTeamResponse(TeamResponse):
     general_channel_id = serializers.UUIDField()
+
+
+class TeamDetailResponse(serializers.Serializer):
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    icon_file_id = serializers.UUIDField(allow_null=True)
+    my_role = serializers.CharField()
+    member_count = serializers.IntegerField()
+    created_by = serializers.UUIDField(allow_null=True)
+    created_at = serializers.DateTimeField()
