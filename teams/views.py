@@ -5,9 +5,12 @@ from rest_framework.response import Response
 from shared.serializers import validated
 from shared.views import UserAPIView
 from teams.serializers import (
+    BaseInviteResponse,
     ChangeRoleRequest,
+    CreateInviteRequest,
     CreateTeamRequest,
     CreateTeamResponse,
+    InviteResponse,
     MemberRoleResponse,
     TeamDetailResponse,
     TeamMemberResponse,
@@ -15,7 +18,7 @@ from teams.serializers import (
     TeamResponse,
     UpdateTeamRequest,
 )
-from teams.services import TeamService
+from teams.services import InviteService, TeamService
 
 
 class TeamsView(UserAPIView):
@@ -67,4 +70,21 @@ class TeamMemberDetailView(UserAPIView):
 class LeaveTeamView(UserAPIView):
     async def post(self, request, team_id: UUID):
         await TeamService.leave(team_id=team_id, user_id=request.user.id)
+        return Response(status=204)
+
+
+class TeamInvitesView(UserAPIView):
+    async def post(self, request, team_id: UUID):
+        data = validated(CreateInviteRequest, request.data)
+        result = await InviteService.create(team_id=team_id, user_id=request.user.id, **data)
+        return Response(InviteResponse(result).data, status=201)
+
+    async def get(self, request, team_id: UUID):
+        invites = await InviteService.list_invites(team_id=team_id, user_id=request.user.id)
+        return Response({"invites": BaseInviteResponse(invites, many=True).data})
+
+
+class InviteDetailView(UserAPIView):
+    async def delete(self, request, invite_id: UUID):
+        await InviteService.revoke(invite_id=invite_id, user_id=request.user.id)
         return Response(status=204)
