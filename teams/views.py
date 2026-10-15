@@ -62,3 +62,9 @@ class TeamMemberDetailView(UserAPIView):
     async def delete(self, request, team_id: UUID, user_id: UUID):
         await TeamService.remove_member(team_id, request.user.id, user_id)
         return Response(status=204)
+
+
+class LeaveTeamView(UserAPIView):
+    async def post(self, request, team_id: UUID):
+        await TeamService.leave(team_id=team_id, user_id=request.user.id)
+        return Response(status=204)
