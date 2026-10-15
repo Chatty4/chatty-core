@@ -107,7 +107,14 @@ class TeamService:
 
     @staticmethod
     async def list_members(
-        team_id: UUID, user_id: UUID, limit: int, cursor: str | None = None, q: str | None = None
+        team_id: UUID,
+        user_id: UUID,
+        limit: int,
+        cursor: str | None = None,
+        q: str | None = None,
+        user_ids: list[UUID] | None = None,
     ) -> tuple[list[TeamMember], str | None]:
         await TeamService.require_member(team_id, user_id)
+        if user_ids is not None: # lookup mode: exactly these members, never paginated
+            return await TeamMemberRepository.list_members_by_user_ids(team_id, user_ids), None
         return await TeamMemberRepository.list_members(team_id, q, cursor, limit)

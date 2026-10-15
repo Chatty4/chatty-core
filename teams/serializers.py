@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from rest_framework import serializers
 
 from shared.pagination import PageQuery
@@ -22,6 +24,20 @@ class CreateTeamResponse(TeamResponse):
 
 class TeamMembersQuery(PageQuery):
     q = serializers.CharField(required=False, allow_blank=True)
+    user_ids = serializers.CharField(required=False)
+
+    def validate_user_ids(self, value: str) -> list[UUID]:
+        ids = value.split(",")
+        if len(ids) > 100:
+            raise serializers.ValidationError("At most 100 user ids", code="too_many")
+        return [serializers.UUIDField().to_internal_value(i) for i in ids]
+
+    def validate(self, data: dict) -> dict:
+        if "user_ids" in data and "cursor" in data:
+            raise serializers.ValidationError(
+                {"user_ids": "Can't be used with cursor"}, code="not_with_cursor"
+            )
+        return data
 
 
 class TeamMemberResponse(serializers.Serializer):

@@ -77,3 +77,9 @@ class TeamMemberRepository:
         return await paginate(
             qs, ("user__display_name", "user_id"), cursor, limit, "team_members", q
         )
+
+    @staticmethod
+    async def list_members_by_user_ids(team_id: UUID, user_ids: list[UUID]) -> list[TeamMember]:
+        """These users' memberships in the team. User who aren't in it are left out."""
+        qs = TeamMember.objects.filter(team_id=team_id, user_id__in=user_ids).select_related("user")
+        return [m async for m in qs.order_by("user__display_name", "user_id")]

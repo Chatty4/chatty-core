@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 from asgiref.sync import sync_to_async
 
@@ -109,3 +111,55 @@ async def test_outsider_gets_403(async_client, team):
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "not_a_team_member"
+
+async def ids_by_name(team) -> dict[str, str]:
+    return {
+        m.user.display_name: str(m.user.id)
+        async for m in TeamMember.objects.filter(team_id=team.id).select_related("user")
+    }
+
+
+async def test_user_ids_returns_exactly_those_members(async_client, team, auth):
+    ids = await ids_by_name(team)
+    wanted = f"{ids['Mihai Ionescu']},{ids['Ana Pop']}"
+
+    body = (await get_members(async_client, team, auth, user_ids=wanted)).json()
+
+    assert names(body) == ["Ana Pop", "Mihai Ionescu"]
+    assert body["next_cursor"] is None
+
+
+async def test_user_ids_leaves_out_people_not_in_the_team(async_client, team, auth):
+    ids = await ids_by_name(team)
+    wanted = f"{ids['Ana Pop']},{uuid.uuid4()}"
+
+    body = (await get_members(async_client, team, auth, user_ids=wanted)).json()
+
+    assert names(body) == ["Ana Pop"]
+
+
+async def test_more_than_100_user_ids_is_rejected(async_client, team, auth):
+    wanted = ",".join(str(uuid.uuid4()) for _ in range(101))
+
+    response = await get_members(async_client, team, auth, user_ids=wanted)
+
+    assert response.status_code == 400
+    assert response.json()["error"]["fields"] == {"user_ids": "too_many"}
+
+
+async def test_user_ids_with_cursor_is_rejected(async_client, team, auth):
+    ids = await ids_by_name(team)
+
+    response = await get_members(
+        async_client, team, auth, user_ids=ids["Ana Pop"], cursor="anything"
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["fields"] == {"user_ids": "not_with_cursor"}
+
+
+async def test_bad_user_id_is_rejected(async_client, team, auth):
+    response = await get_members(async_client, team, auth, user_ids="not-a-uuid")
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "validation_error"
