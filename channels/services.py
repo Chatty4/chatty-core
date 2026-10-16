@@ -25,7 +25,7 @@ class ChannelService:
         read:   cannot_read_channel
         member: not_a_member
         write:  not_a_member, or channel_archived
-        manage: not_allowed_For_dm for a DM, else forbidden
+        manage: not_allowed_for_dm for a DM, else forbidden
         A missing channel, or one whose team was deleted, is channel_not_found.
         """
         channel = await ChannelRepository.get_with_team(channel_id)
@@ -196,8 +196,8 @@ class ChannelService:
         channel = access.channel
         if channel.is_default:
             raise BadRequest(ErrorCode.CANNOT_ARCHIVE_DEFAULT)
-        if channel.archived_at is None:  # not archived yet/ if it already is, return 200
+        if channel.archived_at is None:  # not archived yet. if it already is, return 200
             channel = await ChannelRepository.archive(channel)
-            # TODO(CHAT-172): publich channel.updated (archived: true) after commit
+            # TODO(CHAT-172): publish channel.updated (archived: true) after commit
         member_count = await ChannelMemberRepository.count(channel_id)
         return ChannelDetail(channel, member_count, access.channel_member)
