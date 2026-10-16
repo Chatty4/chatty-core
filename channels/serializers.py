@@ -91,3 +91,8 @@ class ChannelMemberResponse(serializers.Serializer):
 
 class AddChannelMemberRequest(serializers.Serializer):
     user_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=50)
+
+
+class UpdateChannelRequest(serializers.Serializer):
+    name = serializers.RegexField(r"^[a-z0-9_-]+$", max_length=80)
+    topic = serializers.CharField(required=False, allow_blank=True, max_length=250)

@@ -7,7 +7,7 @@ from django.utils import timezone
 from channels.models import Channel, ChannelMember
 from channels.services import ChannelService
 from shared.codes import ErrorCode
-from shared.exceptions import Conflict, NotFound, PermissionDenied
+from shared.exceptions import BadRequest, Conflict, NotFound, PermissionDenied
 from teams.models import Team, TeamMember
 from teams.services import TeamService
 from users.models import User
@@ -129,3 +129,13 @@ async def test_team_owner_manages_a_private_channel_they_arent_in(owner, private
     result = await ChannelService.require_access(private.id, owner.id, "manage")
 
     assert result.channel_member is None
+
+
+async def test_dm_cannot_be_managed(team, owner):
+    dm = await Channel.objects.acreate(team_id=team.id, kind=Channel.Kind.DM, dm_key="x")
+    await join(dm.id, owner)
+
+    with pytest.raises(BadRequest) as caught:
+        await ChannelService.require_access(dm.id, owner.id, "manage")
+
+    assert caught.value.code == ErrorCode.NOT_ALLOWED_FOR_DM

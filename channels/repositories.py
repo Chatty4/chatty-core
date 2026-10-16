@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from django.db.models import Count
+from django.utils import timezone
 
 from channels.models import Channel, ChannelMember
 from shared.pagination import paginate
@@ -43,6 +44,20 @@ class ChannelRepository:
             qs = qs.filter(name__icontains=q)
         qs = qs.annotate(member_count=Count("members"))
         return await paginate(qs, ("name", "id"), cursor, limit, "channel_browse", q)
+
+    @staticmethod
+    async def update(channel: Channel, name: str, topic: str) -> Channel:
+        """Save the channel's name and topic. Raises IntegrityError if the name is taken."""
+        channel.name = name
+        channel.topic = topic
+        await channel.asave(update_fields=["name", "topic"])
+        return channel
+
+    @staticmethod
+    async def archive(channel: Channel) -> Channel:
+        channel.archived_at = timezone.now()
+        await channel.asave(update_fields=["archived_at"])
+        return channel
 
 
 class ChannelMemberRepository:
