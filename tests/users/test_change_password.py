@@ -63,9 +63,9 @@ async def change(client, tokens, old=OLD, new=NEW):
     return await client.post(URL, body, content_type="application/json", headers=headers)
 
 
-async def is_revoked(raw: str) -> bool:
-    token = await RefreshToken.objects.aget(token_hash=hashlib.sha256(raw.encode()).hexdigest())
-    return token.revoked_at is not None
+async def is_logged_out(raw: str) -> bool:
+    token_hash = hashlib.sha256(raw.encode()).hexdigest()
+    return not await RefreshToken.objects.filter(token_hash=token_hash).aexists()
 
 
 async def test_change_password(async_client, user, this_device, other_device):
@@ -74,8 +74,8 @@ async def test_change_password(async_client, user, this_device, other_device):
     assert response.status_code == 204
     saved = await User.objects.aget(id=user.id)
     assert await sync_to_async(saved.check_password)(NEW)
-    assert not await is_revoked(this_device.refresh_token)
-    assert await is_revoked(other_device.refresh_token)
+    assert not await is_logged_out(this_device.refresh_token)
+    assert await is_logged_out(other_device.refresh_token)
 
 
 async def test_wrong_old_password(async_client, user, this_device, other_device):
@@ -83,7 +83,7 @@ async def test_wrong_old_password(async_client, user, this_device, other_device)
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "wrong_password"
-    assert not await is_revoked(other_device.refresh_token)
+    assert not await is_logged_out(other_device.refresh_token)
 
 
 async def test_same_password(async_client, this_device):
@@ -123,7 +123,7 @@ async def test_unknown_refresh_token(async_client, user, this_device, other_devi
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "invalid_refresh_token"
     assert await password_is_old(user)
-    assert not await is_revoked(other_device.refresh_token)
+    assert not await is_logged_out(other_device.refresh_token)
 
 
 async def test_other_users_refresh_token(async_client, user, this_device, other_device, stranger):
@@ -134,8 +134,8 @@ async def test_other_users_refresh_token(async_client, user, this_device, other_
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "forbidden"
     assert await password_is_old(user)
-    assert not await is_revoked(other_device.refresh_token)
-    assert not await is_revoked(stranger.refresh_token)
+    assert not await is_logged_out(other_device.refresh_token)
+    assert not await is_logged_out(stranger.refresh_token)
 
 
 async def test_revoked_refresh_token(async_client, user, this_device, other_device):
@@ -146,7 +146,7 @@ async def test_revoked_refresh_token(async_client, user, this_device, other_devi
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "invalid_refresh_token"
     assert await password_is_old(user)
-    assert not await is_revoked(other_device.refresh_token)
+    assert not await is_logged_out(other_device.refresh_token)
 
 
 async def test_expired_refresh_token(async_client, user, this_device, other_device):

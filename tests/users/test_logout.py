@@ -11,6 +11,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 LOGIN_URL = "/api/core/v1/auth/login"
 LOGOUT_URL = "/api/core/v1/auth/logout"
+REFRESH_URL = "/api/core/v1/auth/refresh"
 EMAIL = "ana@example.com"
 PASSWORD = "correct horse battery"
 
@@ -40,7 +41,7 @@ async def tokens(async_client, user):
     return response.json()
 
 
-async def test_logout_revokes_refresh_token(async_client, tokens):
+async def test_logout_deletes_refresh_token(async_client, tokens):
     access = tokens["access_token"]
     refresh = tokens["refresh_token"]
 
@@ -53,9 +54,7 @@ async def test_logout_revokes_refresh_token(async_client, tokens):
 
     assert response.status_code == 204
     token_hash = hashlib.sha256(refresh.encode()).hexdigest()
-    token = await RefreshToken.objects.filter(token_hash=token_hash).afirst()
-    assert token is not None
-    assert token.revoked_at is not None
+    assert not await RefreshToken.objects.filter(token_hash=token_hash).aexists()
 
 
 async def test_logout_unknown_token_is_no_op(async_client, tokens):
@@ -111,8 +110,8 @@ async def test_logout_missing_refresh_token_field(async_client, tokens):
     assert response.json()["error"]["fields"] == {"refresh_token": "required"}
 
 
-async def test_logout_other_users_revoked_token_returns_403(async_client, tokens):
-    """User B cannot use another user's already-revoked token to get a silent 204."""
+async def test_logout_other_users_rotated_token_returns_403(async_client, tokens):
+    """User B cannot use another user's already-rotated token to get a silent 204."""
     user_b = await sync_to_async(User.objects.create_user)(
         email="bob2@example.com", display_name="Bob", password=PASSWORD
     )
@@ -123,15 +122,14 @@ async def test_logout_other_users_revoked_token_returns_403(async_client, tokens
     )
     b_tokens = b_resp.json()
 
-    # Revoke A's token first (as A)
+    # Rotate A's token first, so the old row still exists
     await async_client.post(
-        LOGOUT_URL,
+        REFRESH_URL,
         {"refresh_token": tokens["refresh_token"]},
         content_type="application/json",
-        headers={"Authorization": f"Bearer {tokens['access_token']}"},
     )
 
-    # B tries to logout with A's now-revoked token → must be 403, not 204
+    # B tries to logout with A's now-rotated token → must be 403, not 204
     response = await async_client.post(
         LOGOUT_URL,
         {"refresh_token": tokens["refresh_token"]},

@@ -33,21 +33,22 @@ class RefreshTokenRepository:
         )
 
     @staticmethod
-    async def revoke(token: RefreshToken) -> None:
-        token.revoked_at = timezone.now()
-        await token.asave(update_fields=["revoked_at"])
-
-    @staticmethod
     def revoke_sync(token: RefreshToken) -> None:
+        """Mark the token as rotated. Only rotation sets revoked_at, so a later reuse is theft."""
         token.revoked_at = timezone.now()
         token.save(update_fields=["revoked_at"])
 
     @staticmethod
-    async def revoke_all_for_user(user_id: str, except_hash: str | None = None) -> None:
-        tokens = RefreshToken.objects.filter(user_id=user_id, revoked_at__isnull=True)
+    async def delete(token: RefreshToken) -> None:
+        await token.adelete()
+
+    @staticmethod
+    async def delete_all_for_user(user_id: str, except_hash: str | None = None) -> None:
+        """Delete every refresh token of the user, rotated ones included, except except_hash."""
+        tokens = RefreshToken.objects.filter(user_id=user_id)
         if except_hash:
             tokens = tokens.exclude(token_hash=except_hash)
-        await tokens.aupdate(revoked_at=timezone.now())
+        await tokens.adelete()
 
     @staticmethod
     def _stale_qs(cutoff: datetime):
