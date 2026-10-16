@@ -77,3 +77,22 @@ class ChannelDetailResponse(serializers.Serializer):
             "member_count": detail.member_count,
             "my": MySettingsResponse(detail.my).data if detail.my else None,
         }
+
+
+class JoinChannelResponse(MySettingsResponse):
+    channel_id = serializers.UUIDField()
+
+
+class ChannelMemberResponse(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    role = serializers.CharField()
+    joined_at = serializers.DateTimeField()
+
+
+class AddChannelMemberRequest(serializers.Serializer):
+    user_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=50)
+
+
+class UpdateChannelRequest(serializers.Serializer):
+    name = serializers.RegexField(r"^[a-z0-9_-]+$", max_length=80)
+    topic = serializers.CharField(required=False, allow_blank=True, max_length=250)

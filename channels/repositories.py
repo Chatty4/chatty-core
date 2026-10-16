@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from django.db.models import Count
+from django.utils import timezone
 
 from channels.models import Channel, ChannelMember
 from shared.pagination import paginate
@@ -43,6 +44,20 @@ class ChannelRepository:
             qs = qs.filter(name__icontains=q)
         qs = qs.annotate(member_count=Count("members"))
         return await paginate(qs, ("name", "id"), cursor, limit, "channel_browse", q)
+
+    @staticmethod
+    async def update(channel: Channel, name: str, topic: str) -> Channel:
+        """Save the channel's name and topic. Raises IntegrityError if the name is taken."""
+        channel.name = name
+        channel.topic = topic
+        await channel.asave(update_fields=["name", "topic"])
+        return channel
+
+    @staticmethod
+    async def archive(channel: Channel) -> Channel:
+        channel.archived_at = timezone.now()
+        await channel.asave(update_fields=["archived_at"])
+        return channel
 
     @staticmethod
     def list_default_ids_sync(team_id: UUID) -> list[UUID]:
@@ -97,6 +112,74 @@ class ChannelMemberRepository:
     @staticmethod
     async def count(channel_id: UUID) -> int:
         return await ChannelMember.objects.filter(channel_id=channel_id).acount()
+
+    @staticmethod
+    async def get_or_create(channel_id: UUID, user_id: UUID, notify_level: str) -> ChannelMember:
+        """
+        The user's membership, created as a plain member if missing.
+        Safe when two requests race.
+        """
+        member, _ = await ChannelMember.objects.aget_or_create(
+            channel_id=channel_id, user_id=user_id, defaults={"notify_level": notify_level}
+        )
+        return member
+
+    @staticmethod
+    def lock_owner_ids_sync(channel_id: UUID) -> list[UUID]:
+        """Lock the channel row until the transaction ends, then return its owners' user ids.
+
+        Locking the channel, not the owner rows, make a second leave wait for the first one's
+        hand-off, so it sees the member who was just promoted.
+        """
+        Channel.objects.select_for_update().filter(id=channel_id).first()
+        return list(
+            ChannelMember.objects.filter(
+                channel_id=channel_id, role=ChannelMember.Role.OWNER
+            ).values_list("user_id", flat=True)
+        )
+
+    @staticmethod
+    def delete_sync(channel_id: UUID, user_id: UUID) -> None:
+        ChannelMember.objects.filter(channel_id=channel_id, user_id=user_id).delete()
+
+    @staticmethod
+    def promote_first_joined_sync(channel_id: UUID) -> None:
+        """Make the member who joined first the owner. No-op when the channel is empty."""
+        first = (
+            ChannelMember.objects.filter(channel_id=channel_id)
+            .order_by("joined_at", "user_id")
+            .first()
+        )
+        if first:
+            first.role = ChannelMember.Role.OWNER
+            first.save(update_fields=["role"])
+
+    @staticmethod
+    async def page(
+        channel_id: UUID, cursor: str | None, limit: int
+    ) -> tuple[list[ChannelMember], str | None]:
+        """A page of the channel's members, oldest first"""
+        qs = ChannelMember.objects.filter(channel_id=channel_id)
+        return await paginate(qs, ("joined_at", "user_id"), cursor, limit, "channel_members")
+
+    @staticmethod
+    async def add_many(channel_id: UUID, user_ids: list[UUID], notify_level: str) -> list[UUID]:
+        """Add the users who aren't members yet. Return their ids, in the order given."""
+        existing = {
+            uid
+            async for uid in ChannelMember.objects.filter(
+                channel_id=channel_id, user_id__in=user_ids
+            ).values_list("user_id", flat=True)
+        }
+        new_ids = [uid for uid in user_ids if uid not in existing]
+        await ChannelMember.objects.abulk_create(
+            [
+                ChannelMember(channel_id=channel_id, user_id=uid, notify_level=notify_level)
+                for uid in new_ids
+            ],
+            ignore_conflicts=True,  # someone joined or was added by another requests meanwhile
+        )
+        return new_ids
 
     @staticmethod
     def bulk_create_sync(

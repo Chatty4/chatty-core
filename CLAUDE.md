@@ -105,6 +105,10 @@ Async by default, with explicit sync islands.
 - `transaction.atomic` is sync only. Write the transactional part as a sync function decorated with
   `@transaction.atomic` and call it with `await sync_to_async(fn)(...)`. Repository functions used inside it
   are sync and end in `_sync` (`create_team_sync`). This is the only place sync ORM calls are allowed.
+- When a write depends on other rows (last owner, owner hand-off), lock the parent row (`Channel`, `Team`)
+  with `select_for_update()` first, then read those rows. Don't lock the rows themselves: under Postgres
+  READ COMMITTED a waiting `select_for_update` re-checks only rows that matched when it started, so it
+  misses a row another transaction just changed to match (a member just promoted to owner).
 - Never call a sync ORM method from async code (Django raises `SynchronousOnlyOperation`).
   Watch for hidden queries: accessing a foreign key that wasn't loaded (`member.user.email`) is a sync query.
 - Redis events are published only after commit: `transaction.on_commit(lambda: publish(...))`.
@@ -140,6 +144,9 @@ Async by default, with explicit sync islands.
   the test database can't be dropped. Keep it.
 - Test services directly for business rules, and views for status codes and response shapes from the contract.
 - Every bug fix comes with a test that fails without the fix.
+- Race tests act like two uvicorn workers: run each request's sync transaction in its own thread
+  (`ThreadPoolExecutor`, `connections.close_all()` at the end of each), and force the overlap by
+  monkeypatching a sleep in while the first one holds the lock. Example: `tests/channels/test_leave_race.py`.
 
 ## Workflow
 

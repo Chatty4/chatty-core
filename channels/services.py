@@ -9,7 +9,7 @@ from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
 from channels.schemas import ChannelAccess, ChannelDetail, MyChannel
 from shared.codes import ErrorCode
-from shared.exceptions import Conflict, NotFound, PermissionDenied
+from shared.exceptions import BadRequest, Conflict, NotFound, PermissionDenied
 from teams.models import Team
 from teams.repositories import TeamMemberRepository
 from teams.services import TeamService
@@ -25,12 +25,14 @@ class ChannelService:
         read:   cannot_read_channel
         member: not_a_member
         write:  not_a_member, or channel_archived
-        manage: forbidden
+        manage: not_allowed_for_dm for a DM, else forbidden
         A missing channel, or one whose team was deleted, is channel_not_found.
         """
         channel = await ChannelRepository.get_with_team(channel_id)
         if channel is None:
             raise NotFound(ErrorCode.CHANNEL_NOT_FOUND)
+        if need == "manage" and channel.kind == Channel.Kind.DM:
+            raise BadRequest(ErrorCode.NOT_ALLOWED_FOR_DM)
         team_member = await TeamMemberRepository.get_member(channel.team.id, user_id)
         channel_member = await ChannelMemberRepository.get_member(channel_id, user_id)
 
@@ -98,3 +100,104 @@ class ChannelService:
     ) -> tuple[list[Channel], str | None]:
         await TeamService.require_member(team_id, user_id)
         return await ChannelRepository.browse(team_id, user_id, q, cursor, limit)
+
+    @staticmethod
+    async def join(channel_id: UUID, user_id: UUID) -> ChannelMember:
+        channel = await ChannelRepository.get_with_team(channel_id)
+        if channel is None:
+            raise NotFound(ErrorCode.CHANNEL_NOT_FOUND)
+        await TeamService.require_member(channel.team.id, user_id)
+        if channel.kind != Channel.Kind.PUBLIC:
+            raise PermissionDenied(ErrorCode.CANNOT_JOIN_PRIVATE)
+        if channel.archived_at is not None:
+            raise Conflict(ErrorCode.CHANNEL_ARCHIVED)
+        # TODO(CHAT-172): publish membership.changed (added) after commit, only when newly created
+
+        return await ChannelMemberRepository.get_or_create(
+            channel_id, user_id, ChannelMember.NotifyLevel.MENTIONS
+        )
+
+    @staticmethod
+    async def leave(channel_id: UUID, user_id: UUID) -> None:
+        access = await ChannelService.require_access(channel_id, user_id, "member")
+        if access.channel.kind == Channel.Kind.DM:
+            raise BadRequest(ErrorCode.CANNOT_LEAVE_DM)
+        await sync_to_async(ChannelService._leave_sync)(access.channel, user_id)
+
+    @staticmethod
+    @transaction.atomic
+    def _leave_sync(channel: Channel, user_id: UUID) -> None:
+        """The owner lock stops two owners leaving at once from both skipping the hand-off."""
+        owner_ids = ChannelMemberRepository.lock_owner_ids_sync(channel.id)
+        ChannelMemberRepository.delete_sync(channel.id, user_id)
+        if channel.kind == Channel.Kind.PRIVATE and owner_ids == [user_id]:
+            ChannelMemberRepository.promote_first_joined_sync(channel.id)
+        # TODO(CHAT-172): publish membership.changed (removed) after commit
+
+    @staticmethod
+    async def list_members(
+        channel_id: UUID, user_id: UUID, limit: int, cursor: str | None = None
+    ) -> tuple[list[ChannelMember], str | None]:
+        await ChannelService.require_access(channel_id, user_id, "read")
+        return await ChannelMemberRepository.page(channel_id, cursor, limit)
+
+    @staticmethod
+    async def add_members(
+        channel_id: UUID, user_id: UUID, user_ids: list[UUID]
+    ) -> tuple[list[UUID], list[UUID]]:
+        """(added, already_members)"""
+        access = await ChannelService.require_access(channel_id, user_id, "write")
+        if access.channel.kind == Channel.Kind.DM:
+            raise BadRequest(ErrorCode.NOT_ALLOWED_FOR_DM)
+        user_ids = list(dict.fromkeys(user_ids))  # drop duplicates, keep order
+        in_team = await TeamMemberRepository.list_members_by_user_ids(
+            access.channel.team.id, user_ids
+        )
+        if len(in_team) != len(user_ids):
+            raise BadRequest(ErrorCode.USER_NOT_IN_TEAM)
+        added = await ChannelMemberRepository.add_many(
+            channel_id, user_ids, ChannelMember.NotifyLevel.MENTIONS
+        )
+        # TODO(CHAT-172): publish membership.changed (added) for eaech id in 'added' after commit
+
+        return added, [uid for uid in user_ids if uid not in added]
+
+    @staticmethod
+    async def remove_member(channel_id: UUID, user_id: UUID, target_id: UUID) -> None:
+        if target_id == user_id:
+            raise Conflict(ErrorCode.USE_LEAVE)
+        access = await ChannelService.require_access(channel_id, user_id, "manage")
+        if await ChannelMemberRepository.get_member(channel_id, target_id) is None:
+            raise NotFound(ErrorCode.MEMBER_NOT_FOUND)
+        # same as leave: removing the last owner of a private channel hands it off too
+        await sync_to_async(ChannelService._leave_sync)(access.channel, target_id)
+
+    @staticmethod
+    async def update(
+        channel_id: UUID, user_id: UUID, name: str, topic: str | None = None
+    ) -> ChannelDetail:
+        """Rename and change the topic. No topic keeps the current one."""
+        access = await ChannelService.require_access(channel_id, user_id, "manage")
+        if access.channel.archived_at is not None:
+            raise Conflict(ErrorCode.CHANNEL_ARCHIVED)
+        try:
+            channel = await ChannelRepository.update(
+                access.channel, name, access.channel.topic if topic is None else topic
+            )
+        except IntegrityError:  # unique_channel_name_per_team, also when two renames race
+            raise Conflict(ErrorCode.CHANNEL_NAME_TAKEN) from None
+        # TODO(CHAT-172): publish channel.updated after commit
+        member_count = await ChannelMemberRepository.count(channel_id)
+        return ChannelDetail(channel, member_count, access.channel_member)
+
+    @staticmethod
+    async def archive(channel_id: UUID, user_id: UUID) -> ChannelDetail:
+        access = await ChannelService.require_access(channel_id, user_id, "manage")
+        channel = access.channel
+        if channel.is_default:
+            raise BadRequest(ErrorCode.CANNOT_ARCHIVE_DEFAULT)
+        if channel.archived_at is None:  # not archived yet. if it already is, return 200
+            channel = await ChannelRepository.archive(channel)
+            # TODO(CHAT-172): publish channel.updated (archived: true) after commit
+        member_count = await ChannelMemberRepository.count(channel_id)
+        return ChannelDetail(channel, member_count, access.channel_member)
