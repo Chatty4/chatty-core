@@ -3,6 +3,7 @@ from django.urls import path
 from channels.views import (
     BrowseChannelsView,
     ChannelDetailView,
+    ChannelMemberDetailView,
     ChannelMembersView,
     JoinChannelView,
     LeaveChannelView,
@@ -15,6 +16,11 @@ urlpatterns = [
     path("channels/<uuid:channel_id>/leave", LeaveChannelView.as_view(), name="channel-leave"),
     path(
         "channels/<uuid:channel_id>/members", ChannelMembersView.as_view(), name="channel-members"
+    ),
+    path(
+        "channels/<uuid:channel_id>/members/<uuid:user_id>",
+        ChannelMemberDetailView.as_view(),
+        name="channel-member-detail",
     ),
     path("teams/<uuid:team_id>/channels", TeamChannelsView.as_view(), name="team-channels"),
     path(

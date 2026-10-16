@@ -77,3 +77,9 @@ class ChannelMembersView(UserAPIView):
         data = validated(AddChannelMemberRequest, request.data)
         added, already = await ChannelService.add_members(channel_id, request.user.id, **data)
         return Response({"added": added, "already_members": already})
+
+
+class ChannelMemberDetailView(UserAPIView):
+    async def delete(self, request, channel_id: UUID, user_id: UUID):
+        await ChannelService.remove_member(channel_id, request.user.id, user_id)
+        return Response(status=204)

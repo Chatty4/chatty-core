@@ -159,3 +159,18 @@ class ChannelService:
         # TODO(CHAT-172): publish membership.changed (added) for eaech id in 'added' after commit
 
         return added, [uid for uid in user_ids if uid not in added]
+
+    @staticmethod
+    async def remove_member(channel_id: UUID, user_id: UUID, target_id: UUID) -> None:
+        channel = await ChannelRepository.get_with_team(channel_id)
+        if channel is None:
+            raise NotFound(ErrorCode.CHANNEL_NOT_FOUND)
+        if channel.kind == Channel.Kind.DM: # before "manage", which refuse every DM as forbidden
+            raise BadRequest(ErrorCode.NOT_ALLOWED_FOR_DM)
+        if target_id == user_id:
+            raise Conflict(ErrorCode.USE_LEAVE)
+        await ChannelService.require_access(channel_id, user_id, "manage")
+        if await ChannelMemberRepository.get_member(channel_id, target_id) is None:
+            raise NotFound(ErrorCode.MEMBER_NOT_FOUND)
+        # same as leave: removing the last owner of a private channel hands it off too
+        await sync_to_async(ChannelService._leave_sync)(channel, target_id)
