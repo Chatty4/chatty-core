@@ -13,6 +13,7 @@ from teams.serializers import (
     CreateTeamResponse,
     InviteLookupResponse,
     InviteResponse,
+    JoinTeamResponse,
     MemberRoleResponse,
     TeamDetailResponse,
     TeamMemberResponse,
@@ -99,3 +100,10 @@ class InviteLookupView(AsyncAPIView):
     async def get(self, request, invite_code: str):
         result = await InviteService.lookup(code=invite_code, ip=client_ip(request))
         return Response(InviteLookupResponse(result).data)
+
+
+class InviteJoinView(UserAPIView):
+    async def post(self, request, invite_code: str):
+        result = await InviteService.join(code=invite_code, user_id=request.user.id)
+        status = 200 if result.already_member else 201
+        return Response(JoinTeamResponse(result).data, status=status)

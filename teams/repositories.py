@@ -58,6 +58,11 @@ class TeamRepository:
         return team
 
     @staticmethod
+    def lock_sync(team_id: UUID) -> None:
+        """Lock the team row until the transaction ends."""
+        Team.objects.select_for_update().get(id=team_id)
+
+    @staticmethod
     async def delete(team: Team) -> None:
         """Soft delete team."""
         team.deleted_at = timezone.now()
@@ -189,3 +194,14 @@ class InviteRepository:
         """Set revoked_at to now."""
         invite.revoked_at = timezone.now()
         await invite.asave(update_fields=["revoked_at"])
+
+    @staticmethod
+    def lock_by_id_sync(invite_id: UUID) -> Invite:
+        """Lock the invite row until the transaction ends, and return it."""
+        return Invite.objects.select_for_update().get(id=invite_id)
+
+    @staticmethod
+    def increment_uses_sync(invite: Invite) -> None:
+        """Add 1 to uses. Call only with row locked."""
+        invite.uses += 1
+        invite.save(update_fields=["uses"])

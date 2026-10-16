@@ -2,6 +2,7 @@ from django.urls import path
 
 from teams.views import (
     InviteDetailView,
+    InviteJoinView,
     InviteLookupView,
     LeaveTeamView,
     TeamDetailView,
@@ -18,6 +19,7 @@ urlpatterns = [
     path("teams/<uuid:team_id>/invites", TeamInvitesView.as_view(), name="team-invites"),
     path("invites/<uuid:invite_id>", InviteDetailView.as_view(), name="invite-detail"),
     path("invites/<str:invite_code>", InviteLookupView.as_view(), name="invite-lookup"),
+    path("invites/<str:invite_code>/join", InviteJoinView.as_view(), name="invite-join"),
     path("teams/<uuid:team_id>/members", TeamMembersView.as_view(), name="team-members"),
     path(
         "teams/<uuid:team_id>/members/<uuid:user_id>",

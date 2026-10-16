@@ -9,7 +9,7 @@ from django.utils import timezone
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
 from shared.codes import ErrorCode
-from shared.exceptions import Conflict, NotFound, PermissionDenied, RateLimited
+from shared.exceptions import Conflict, Gone, NotFound, PermissionDenied, RateLimited
 from shared.redis import rate_limit
 from teams.models import Invite, Team, TeamMember
 from teams.repositories import InviteRepository, TeamMemberRepository, TeamRepository
@@ -18,6 +18,7 @@ from teams.schemas import (
     CreateTeamResult,
     InviteLookupResult,
     InviteResult,
+    JoinTeamResult,
     TeamDetailResult,
     TeamPreview,
     TeamResult,
@@ -342,4 +343,59 @@ class InviteService:
             reason=reason,
             team=TeamPreview(name=invite.team.name, icon_url=None, member_count=member_count),
             expires_at=invite.expires_at,
+        )
+
+    @staticmethod
+    async def join(code: str, user_id: UUID) -> JoinTeamResult:
+        """Join the team with an invite. Already a member: nothing changes and uses don't go up."""
+        invite = await InviteService._get_invite_or_404(code)
+        return await sync_to_async(InviteService._join_sync)(invite.id, invite.team, user_id)
+
+    @staticmethod
+    @transaction.atomic
+    def _join_sync(invite_id: UUID, team: Team, user_id: UUID) -> JoinTeamResult:
+        """
+        Lock the team so concurrent joins (same or different invite) run one at a time,
+        then add the user to the team and its default channels.
+        """
+        TeamRepository.lock_sync(team.id)
+        invite = InviteRepository.lock_by_id_sync(invite_id)
+
+        member = TeamMemberRepository.get_member_sync(team.id, user_id)
+        if member is not None:
+            return InviteService._already_member(team, member)
+
+        valid, reason = InviteService._check_validity(invite)
+        if not valid:
+            raise Gone(ErrorCode.INVITE_INVALID, reason)
+
+        TeamMemberRepository.create_sync(team=team, user_id=user_id, role=TeamMember.Role.MEMBER)
+        channel_ids = ChannelRepository.list_default_ids_sync(team.id)
+        ChannelMemberRepository.bulk_create_sync(
+            channel_ids,
+            user_id,
+            role=ChannelMember.Role.MEMBER,
+            notify_level=ChannelMember.NotifyLevel.MENTIONS,
+        )
+        InviteRepository.increment_uses_sync(invite)
+
+        # TODO(CHAT-172): on_commit publish team.member.changed (joined)
+        # TODO(CHAT-172): on_commit publish membership.changed (added) per channel
+
+        return JoinTeamResult(
+            team_id=team.id,
+            name=team.name,
+            role=TeamMember.Role.MEMBER,
+            already_member=False,
+            channel_ids=channel_ids,
+        )
+
+    @staticmethod
+    def _already_member(team: Team, member: TeamMember) -> JoinTeamResult:
+        return JoinTeamResult(
+            team_id=team.id,
+            name=team.name,
+            role=member.role,
+            already_member=True,
+            channel_ids=[],
         )

@@ -60,3 +60,12 @@ class InviteLookupResult:
     reason: str | None
     team: TeamPreview
     expires_at: datetime | None
+
+
+@dataclass
+class JoinTeamResult:
+    team_id: UUID
+    name: str
+    role: str
+    already_member: bool
+    channel_ids: list[UUID]
