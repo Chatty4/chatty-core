@@ -1,7 +1,10 @@
 import pytest
 from asgiref.sync import sync_to_async
+from django.utils import timezone
 
 from authn.services import AuthnService
+from teams.models import Team, TeamMember
+from teams.services import TeamService
 from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -91,3 +94,38 @@ async def test_put_me_invalid_fields(async_client, auth):
         "timezone": "invalid",
         "avatar_file_id": "required",
     }
+
+
+async def test_get_me_lists_my_teams_with_my_role(async_client, user, auth):
+    mine = await TeamService.create("Backend", user.id)
+    other_owner = await sync_to_async(User.objects.create_user)(
+        email="bob@example.com", display_name="Bob", password="correct horse battery"
+    )
+    theirs = await TeamService.create("Design", other_owner.id)
+    await TeamMember.objects.acreate(team_id=theirs.id, user=user, role=TeamMember.Role.MEMBER)
+
+    response = await async_client.get(URL, headers=auth)
+
+    assert response.json()["teams"] == [
+        {"team_id": str(mine.id), "name": "Backend", "icon_file_id": None, "role": "owner"},
+        {"team_id": str(theirs.id), "name": "Design", "icon_file_id": None, "role": "member"},
+    ]
+
+
+async def test_get_me_leaves_out_deleted_teams(async_client, user, auth):
+    team = await TeamService.create("Old", user.id)
+    await Team.objects.filter(id=team.id).aupdate(deleted_at=timezone.now())
+
+    response = await async_client.get(URL, headers=auth)
+
+    assert response.json()["teams"] == []
+
+
+async def test_put_me_returns_my_teams(async_client, user, auth):
+    team = await TeamService.create("Backend", user.id)
+
+    response = await put_me(async_client, BODY, auth)
+
+    assert response.json()["teams"] == [
+        {"team_id": str(team.id), "name": "Backend", "icon_file_id": None, "role": "owner"}
+    ]

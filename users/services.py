@@ -8,8 +8,10 @@ from authn.services import AuthnService
 from shared.codes import ErrorCode
 from shared.exceptions import BadRequest, Conflict, RateLimited, Unauthorized, UserInactive
 from shared.redis import clear_rate_limit, is_rate_limited, rate_limit, undo_rate_limit
+from teams.services import TeamService
 from users.models import User
 from users.repositories import UserRepository
+from users.schemas import Me
 
 REGISTER_LIMIT = 10
 REGISTER_WINDOW = 60 * 60
@@ -89,10 +91,15 @@ class UserService:
         return deactivated
 
     @staticmethod
+    async def get_me(user: User) -> Me:
+        return Me(user, await TeamService.list_for_user(user.id))
+
+    @staticmethod
     async def update_profile(
         user: User, display_name: str, timezone: str, avatar_file_id: UUID | None
-    ) -> User:
-        return await UserRepository.update_profile(user, display_name, timezone, avatar_file_id)
+    ) -> Me:
+        user = await UserRepository.update_profile(user, display_name, timezone, avatar_file_id)
+        return await UserService.get_me(user)
 
     @staticmethod
     async def change_password(
