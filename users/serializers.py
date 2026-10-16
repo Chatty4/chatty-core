@@ -74,6 +74,13 @@ class UpdateMeRequest(serializers.Serializer):
         return value
 
 
+class MyTeamResponse(serializers.Serializer):
+    team_id = serializers.UUIDField(source="id")
+    name = serializers.CharField()
+    icon_file_id = serializers.UUIDField(allow_null=True)
+    role = serializers.CharField()
+
+
 class MeResponse(UserResponse):
     teams = serializers.SerializerMethodField()
 
@@ -81,7 +88,7 @@ class MeResponse(UserResponse):
         fields = [*UserResponse.Meta.fields, "date_joined", "teams"]
 
     def get_teams(self, user: User) -> list:
-        return []  # shortcut: no teams app yet, fill in when the Team model lands.
+        return [MyTeamResponse(team).data for team in self.context["teams"]]
 
 
 class ChangePasswordRequest(serializers.Serializer):

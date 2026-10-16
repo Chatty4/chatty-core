@@ -53,13 +53,14 @@ class LogoutView(UserAPIView):
 
 class MeView(UserAPIView):
     async def get(self, request):
-        return Response(MeResponse(request.user).data)
+        me = await UserService.get_me(request.user)
+        return Response(MeResponse(me.user, context={"teams": me.teams}).data)
 
     async def put(self, request):
         data = validated(UpdateMeRequest, request.data)
-        user = await UserService.update_profile(request.user, **data)
+        me = await UserService.update_profile(request.user, **data)
 
-        return Response(MeResponse(user).data)
+        return Response(MeResponse(me.user, context={"teams": me.teams}).data)
 
 
 class ChangePasswordView(UserAPIView):
