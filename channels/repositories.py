@@ -44,6 +44,14 @@ class ChannelRepository:
         qs = qs.annotate(member_count=Count("members"))
         return await paginate(qs, ("name", "id"), cursor, limit, "channel_browse", q)
 
+    @staticmethod
+    async def update(channel: Channel, name: str, topic: str) -> Channel:
+        """Save the channel's name and topic. Raises IntegrityError if the name is taken."""
+        channel.name = name
+        channel.topic = topic
+        await channel.asave(update_fields=["name", "topic"])
+        return channel
+
 
 class ChannelMemberRepository:
     @staticmethod

@@ -171,3 +171,21 @@ class ChannelService:
             raise NotFound(ErrorCode.MEMBER_NOT_FOUND)
         # same as leave: removing the last owner of a private channel hands it off too
         await sync_to_async(ChannelService._leave_sync)(access.channel, target_id)
+
+    @staticmethod
+    async def update(
+        channel_id: UUID, user_id: UUID, name: str, topic: str | None = None
+    ) -> ChannelDetail:
+        """Rename and change the topic. No topic keeps the current one."""
+        access = await ChannelService.require_access(channel_id, user_id, "manage")
+        if access.channel.archived_at is not None:
+            raise Conflict(ErrorCode.CHANNEL_ARCHIVED)
+        try:
+            channel = await ChannelRepository.update(
+                access.channel, name, access.channel.topic if topic is None else topic
+            )
+        except IntegrityError:  # unique_channel_name_per_team, also when two renames race
+            raise Conflict(ErrorCode.CHANNEL_NAME_TAKEN) from None
+        # TODO(CHAT-172): publish channel.updated after commit
+        member_count = await ChannelMemberRepository.count(channel_id)
+        return ChannelDetail(channel, member_count, access.channel_member)

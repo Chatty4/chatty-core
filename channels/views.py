@@ -12,6 +12,7 @@ from channels.serializers import (
     CreateChannelRequest,
     JoinChannelResponse,
     MyChannelResponse,
+    UpdateChannelRequest,
 )
 from channels.services import ChannelService
 from shared.pagination import PageQuery
@@ -22,6 +23,11 @@ from shared.views import UserAPIView
 class ChannelDetailView(UserAPIView):
     async def get(self, request, channel_id: UUID):
         detail = await ChannelService.get(channel_id, request.user.id)
+        return Response(ChannelDetailResponse(detail).data)
+
+    async def put(self, request, channel_id: UUID):
+        data = validated(UpdateChannelRequest, request.data)
+        detail = await ChannelService.update(channel_id, request.user.id, **data)
         return Response(ChannelDetailResponse(detail).data)
 
 
