@@ -132,3 +132,22 @@ class ChannelMemberRepository:
         """A page of the channel's members, oldest first"""
         qs = ChannelMember.objects.filter(channel_id=channel_id)
         return await paginate(qs, ("joined_at", "user_id"), cursor, limit, "channel_members")
+
+    @staticmethod
+    async def add_many(channel_id: UUID, user_ids: list[UUID], notify_level: str) -> list[UUID]:
+        """Add the users who aren't members yet. Return their ids, in the order given."""
+        existing = {
+            uid
+            async for uid in ChannelMember.objects.filter(
+                channel_id=channel_id, user_id__in=user_ids
+            ).values_list("user_id", flat=True)
+        }
+        new_ids = [uid for uid in user_ids if uid not in existing]
+        await ChannelMember.objects.abulk_create(
+            [
+                ChannelMember(channel_id=channel_id, user_id=uid, notify_level=notify_level)
+                for uid in new_ids
+            ],
+            ignore_conflicts=True,  # someone joined or was added by another requests meanwhile
+        )
+        return new_ids

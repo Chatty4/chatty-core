@@ -87,3 +87,7 @@ class ChannelMemberResponse(serializers.Serializer):
     user_id = serializers.UUIDField()
     role = serializers.CharField()
     joined_at = serializers.DateTimeField()
+
+
+class AddChannelMemberRequest(serializers.Serializer):
+    user_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=50)

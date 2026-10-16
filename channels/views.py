@@ -3,6 +3,7 @@ from uuid import UUID
 from rest_framework.response import Response
 
 from channels.serializers import (
+    AddChannelMemberRequest,
     BrowseChannelResponse,
     BrowseChannelsQuery,
     ChannelDetailResponse,
@@ -71,3 +72,8 @@ class ChannelMembersView(UserAPIView):
                 "next_cursor": next_cursor,
             }
         )
+
+    async def post(self, request, channel_id: UUID):
+        data = validated(AddChannelMemberRequest, request.data)
+        added, already = await ChannelService.add_members(channel_id, request.user.id, **data)
+        return Response({"added": added, "already_members": already})

@@ -138,3 +138,24 @@ class ChannelService:
     ) -> tuple[list[ChannelMember], str | None]:
         await ChannelService.require_access(channel_id, user_id, "read")
         return await ChannelMemberRepository.page(channel_id, cursor, limit)
+
+    @staticmethod
+    async def add_members(
+        channel_id: UUID, user_id: UUID, user_ids: list[UUID]
+    ) -> tuple[list[UUID], list[UUID]]:
+        """(added, already_members)"""
+        access = await ChannelService.require_access(channel_id, user_id, "write")
+        if access.channel.kind == Channel.Kind.DM:
+            raise BadRequest(ErrorCode.NOT_ALLOWED_FOR_DM)
+        user_ids = list(dict.fromkeys(user_ids))  # drop duplicates, keep order
+        in_team = await TeamMemberRepository.list_members_by_user_ids(
+            access.channel.team.id, user_ids
+        )
+        if len(in_team) != len(user_ids):
+            raise BadRequest(ErrorCode.USER_NOT_IN_TEAM)
+        added = await ChannelMemberRepository.add_many(
+            channel_id, user_ids, ChannelMember.NotifyLevel.MENTIONS
+        )
+        # TODO(CHAT-172): publish membership.changed (added) for eaech id in 'added' after commit
+
+        return added, [uid for uid in user_ids if uid not in added]
