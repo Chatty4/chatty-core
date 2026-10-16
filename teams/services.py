@@ -168,21 +168,21 @@ class TeamService:
 
     @staticmethod
     async def change_role(team_id: UUID, user_id: UUID, target_id: UUID, role: str) -> TeamMember:
-        _, me = await TeamService.require_member(team_id, user_id, roles=MANAGERS)
-        return await sync_to_async(TeamService._change_role_sync)(team_id, me.role, target_id, role)
+        await TeamService.require_member(team_id, user_id, roles=MANAGERS)
+        return await sync_to_async(TeamService._change_role_sync)(team_id, user_id, target_id, role)
 
     @staticmethod
     @transaction.atomic
-    def _change_role_sync(team_id: UUID, my_role: str, target_id: UUID, role: str) -> TeamMember:
-        # Locking the owners first makes two concurent demotions run one after the other,
-        # so they cna't both pas the last-owner check.
+    def _change_role_sync(team_id: UUID, user_id: UUID, target_id: UUID, role: str) -> TeamMember:
+        """Roles are re-read under the team lock, so a change made a moment earlier counts."""
         owner_ids = TeamMemberRepository.lock_owner_ids_sync(team_id)
+        me = TeamService._get_manager_sync(team_id, user_id)
         target = TeamMemberRepository.get_member_sync(team_id, target_id)
         if target is None:
             raise NotFound(ErrorCode.MEMBER_NOT_FOUND)
 
         owner = TeamMember.Role.OWNER
-        if my_role != owner and owner in (role, target.role):
+        if me.role != owner and owner in (role, target.role):
             raise PermissionDenied()  # only an owner can make or change an owner
         if target.role == owner and role != owner and len(owner_ids) == 1:
             raise Conflict(ErrorCode.LAST_OWNER)
@@ -194,20 +194,39 @@ class TeamService:
 
     @staticmethod
     async def remove_member(team_id: UUID, user_id: UUID, target_id: UUID) -> None:
-        _, me = await TeamService.require_member(team_id, user_id, roles=MANAGERS)
+        await TeamService.require_member(team_id, user_id, roles=MANAGERS)
         if target_id == user_id:
             raise Conflict(ErrorCode.USE_LEAVE)
-        target = await TeamMemberRepository.get_member(team_id, target_id)
+        await sync_to_async(TeamService._remove_sync)(team_id, user_id, target_id)
+
+    @staticmethod
+    @transaction.atomic
+    def _remove_sync(team_id: UUID, user_id: UUID, target_id: UUID) -> None:
+        """Roles are re-read under the team lock: an owner removed a moment earlier can't remove
+        anyone, and an admin can't remove a member who was just promoted to owner."""
+        TeamMemberRepository.lock_owner_ids_sync(team_id)
+        me = TeamService._get_manager_sync(team_id, user_id)
+        target = TeamMemberRepository.get_member_sync(team_id, target_id)
         if target is None:
             raise NotFound(ErrorCode.MEMBER_NOT_FOUND)
         if me.role != TeamMember.Role.OWNER and target.role == TeamMember.Role.OWNER:
             raise PermissionDenied()  # admins can't remove owners
-        await sync_to_async(TeamService._remove_member_sync)(team_id, target_id)
+        TeamService._remove_member_sync(team_id, target_id)
+
+    @staticmethod
+    def _get_manager_sync(team_id: UUID, user_id: UUID) -> TeamMember:
+        """My membership read inside the transaction, or the same errors as require_member."""
+        me = TeamMemberRepository.get_member_sync(team_id, user_id)
+        if me is None:
+            raise PermissionDenied(ErrorCode.NOT_A_TEAM_MEMBER)
+        if me.role not in MANAGERS:
+            raise PermissionDenied()
+        return me
 
     @staticmethod
     @transaction.atomic
     def _remove_member_sync(team_id: UUID, user_id: UUID) -> None:
-        """Take the user out of a team and all its channes."""
+        """Take the user out of a team and all its channels."""
         ChannelMemberRepository.delete_in_team_sync(team_id, user_id)
         TeamMemberRepository.delete_sync(team_id, user_id)
         # TODO(CHAT-172): publish team.member.changed (removed) after commit.
