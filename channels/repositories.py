@@ -59,6 +59,15 @@ class ChannelRepository:
         await channel.asave(update_fields=["archived_at"])
         return channel
 
+    @staticmethod
+    def list_default_ids_sync(team_id: UUID) -> list[UUID]:
+        """Ids of the team's default channels that aren't archived."""
+        return list(
+            Channel.objects.filter(
+                team_id=team_id, is_default=True, archived_at__isnull=True
+            ).values_list("id", flat=True)
+        )
+
 
 class ChannelMemberRepository:
     @staticmethod
@@ -171,3 +180,17 @@ class ChannelMemberRepository:
             ignore_conflicts=True,  # someone joined or was added by another requests meanwhile
         )
         return new_ids
+
+    @staticmethod
+    def bulk_create_sync(
+        channel_ids: list[UUID], user_id: UUID, role: str, notify_level: str
+    ) -> None:
+        """Add the user to each of these channels."""
+        ChannelMember.objects.bulk_create(
+            [
+                ChannelMember(
+                    channel_id=channel_id, user_id=user_id, role=role, notify_level=notify_level
+                )
+                for channel_id in channel_ids
+            ]
+        )

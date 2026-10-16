@@ -4,21 +4,28 @@ from uuid import UUID
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
 from shared.codes import ErrorCode
-from shared.exceptions import Conflict, NotFound, PermissionDenied
+from shared.exceptions import Conflict, Gone, NotFound, PermissionDenied, RateLimited
+from shared.redis import rate_limit
 from teams.models import Invite, Team, TeamMember
 from teams.repositories import InviteRepository, TeamMemberRepository, TeamRepository
 from teams.schemas import (
     BaseInviteResult,
     CreateTeamResult,
+    InviteLookupResult,
     InviteResult,
+    JoinTeamResult,
     TeamDetailResult,
+    TeamPreview,
     TeamResult,
 )
 
+LOOKUP_LIMIT = 30
+LOOKUP_WINDOW = 60
 MANAGERS = {TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
 
 
@@ -224,8 +231,13 @@ class TeamService:
 
 class InviteService:
     @staticmethod
-    async def _get_invite_or_404(invite_id: UUID) -> Invite:
-        invite = await InviteRepository.get_by_id(invite_id)
+    async def _get_invite_or_404(key: UUID | str) -> Invite:
+        """Fetch an invite or raise invite_not_found. Pass a UUID to look up by id,
+        a str to look up by code (also loads the team via select_related)."""
+        if isinstance(key, UUID):
+            invite = await InviteRepository.get_by_id(key)
+        else:
+            invite = await InviteRepository.get_by_code(key)
         if invite is None:
             raise NotFound(ErrorCode.INVITE_NOT_FOUND)
         return invite
@@ -300,3 +312,90 @@ class InviteService:
         if invite.revoked_at is not None:
             return
         await InviteRepository.revoke(invite)
+
+    @staticmethod
+    def _check_validity(invite: Invite) -> tuple[bool, str | None]:
+        now = timezone.now()
+        if invite.revoked_at is not None:
+            return False, "revoked"
+        if invite.expires_at is not None and invite.expires_at <= now:
+            return False, "expired"
+        if invite.max_uses != 0 and invite.uses >= invite.max_uses:
+            return False, "used_up"
+        return True, None
+
+    @staticmethod
+    async def lookup(code: str, ip: str) -> InviteLookupResult:
+        """Public invite preview. Rate limited 30/min per IP"""
+        retry_after = await rate_limit(f"invite_lookup:{ip}", LOOKUP_LIMIT, LOOKUP_WINDOW)
+        if retry_after:
+            raise RateLimited(retry_after)
+
+        invite = await InviteService._get_invite_or_404(code)
+
+        valid, reason = InviteService._check_validity(invite)
+        member_count = await TeamMemberRepository.count_members(invite.team.id)
+
+        # TODO: presigned URL once file uploads are done
+        return InviteLookupResult(
+            code=code,
+            valid=valid,
+            reason=reason,
+            team=TeamPreview(name=invite.team.name, icon_url=None, member_count=member_count),
+            expires_at=invite.expires_at,
+        )
+
+    @staticmethod
+    async def join(code: str, user_id: UUID) -> JoinTeamResult:
+        """Join the team with an invite. Already a member: nothing changes and uses don't go up."""
+        invite = await InviteService._get_invite_or_404(code)
+        return await sync_to_async(InviteService._join_sync)(invite.id, invite.team, user_id)
+
+    @staticmethod
+    @transaction.atomic
+    def _join_sync(invite_id: UUID, team: Team, user_id: UUID) -> JoinTeamResult:
+        """
+        Lock the team so concurrent joins (same or different invite) run one at a time,
+        then add the user to the team and its default channels.
+        """
+        TeamRepository.lock_sync(team.id)
+        invite = InviteRepository.lock_by_id_sync(invite_id)
+
+        member = TeamMemberRepository.get_member_sync(team.id, user_id)
+        if member is not None:
+            return InviteService._already_member(team, member)
+
+        valid, reason = InviteService._check_validity(invite)
+        if not valid:
+            raise Gone(ErrorCode.INVITE_INVALID, reason)
+
+        TeamMemberRepository.create_sync(team=team, user_id=user_id, role=TeamMember.Role.MEMBER)
+        channel_ids = ChannelRepository.list_default_ids_sync(team.id)
+        ChannelMemberRepository.bulk_create_sync(
+            channel_ids,
+            user_id,
+            role=ChannelMember.Role.MEMBER,
+            notify_level=ChannelMember.NotifyLevel.MENTIONS,
+        )
+        InviteRepository.increment_uses_sync(invite)
+
+        # TODO(CHAT-172): on_commit publish team.member.changed (joined)
+        # TODO(CHAT-172): on_commit publish membership.changed (added) per channel
+
+        return JoinTeamResult(
+            team_id=team.id,
+            name=team.name,
+            role=TeamMember.Role.MEMBER,
+            already_member=False,
+            channel_ids=channel_ids,
+        )
+
+    @staticmethod
+    def _already_member(team: Team, member: TeamMember) -> JoinTeamResult:
+        return JoinTeamResult(
+            team_id=team.id,
+            name=team.name,
+            role=member.role,
+            already_member=True,
+            channel_ids=[],
+        )

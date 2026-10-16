@@ -109,3 +109,25 @@ class BaseInviteResponse(serializers.Serializer):
 
 class InviteResponse(BaseInviteResponse):
     team_id = serializers.UUIDField()
+
+
+class TeamPreviewResponse(serializers.Serializer):
+    name = serializers.CharField()
+    icon_url = serializers.URLField(allow_null=True)
+    member_count = serializers.IntegerField()
+
+
+class InviteLookupResponse(serializers.Serializer):
+    code = serializers.CharField()
+    valid = serializers.BooleanField()
+    reason = serializers.CharField(allow_null=True)
+    team = TeamPreviewResponse()
+    expires_at = serializers.DateTimeField(allow_null=True)
+
+
+class JoinTeamResponse(serializers.Serializer):
+    team_id = serializers.UUIDField()
+    name = serializers.CharField()
+    role = serializers.CharField()
+    already_member = serializers.BooleanField()
+    channel_ids = serializers.ListField(child=serializers.UUIDField())

@@ -58,6 +58,11 @@ class TeamRepository:
         return team
 
     @staticmethod
+    def lock_sync(team_id: UUID) -> None:
+        """Lock the team row until the transaction ends."""
+        Team.objects.select_for_update().get(id=team_id)
+
+    @staticmethod
     async def delete(team: Team) -> None:
         """Soft delete team."""
         team.deleted_at = timezone.now()
@@ -130,6 +135,18 @@ class InviteRepository:
         return await Invite.objects.filter(id=invite_id).afirst()
 
     @staticmethod
+    async def get_by_code(code: str) -> Invite | None:
+        """
+        Return an invite by code with its team loaded, or None if
+        not found or team is deleted.
+        """
+        return await (
+            Invite.objects.select_related("team")
+            .filter(code=code, team__deleted_at__isnull=True)
+            .afirst()
+        )
+
+    @staticmethod
     def _active_qs(team_id: UUID) -> QuerySet[Invite]:
         """Base queryset for active invites: not revoked, not expired, not used up."""
         now = timezone.now()
@@ -177,3 +194,14 @@ class InviteRepository:
         """Set revoked_at to now."""
         invite.revoked_at = timezone.now()
         await invite.asave(update_fields=["revoked_at"])
+
+    @staticmethod
+    def lock_by_id_sync(invite_id: UUID) -> Invite:
+        """Lock the invite row until the transaction ends, and return it."""
+        return Invite.objects.select_for_update().get(id=invite_id)
+
+    @staticmethod
+    def increment_uses_sync(invite: Invite) -> None:
+        """Add 1 to uses. Call only with row locked."""
+        invite.uses += 1
+        invite.save(update_fields=["uses"])
