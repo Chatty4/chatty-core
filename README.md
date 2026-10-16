@@ -1,6 +1,6 @@
 # chatty-core
 
-Django service for Chatty: users and auth today; teams, channels and files next.
+Django service for Chatty: users, auth, teams, invites and channels today; DMs and files next.
 Python 3.14 · Django 6.1 · DRF (async) · Postgres 17 · Redis · uvicorn.
 
 Contracts live in `chatty-infra/docs`: `api-core.md` (public), `api-internal.md` (`/internal`).
@@ -42,6 +42,9 @@ Done when `curl http://127.0.0.1:8000/health` returns `{"status": "ok", "db": "o
 ## Endpoints that work
 
 All under `/api/core/v1`. 🔒 = needs `Authorization: Bearer <access_token>`.
+Exact requests, responses and errors: `chatty-infra/docs/api-core.md`.
+
+**Auth and profile**
 
 | Endpoint | What it does |
 |---|---|
@@ -50,9 +53,36 @@ All under `/api/core/v1`. 🔒 = needs `Authorization: Bearer <access_token>`.
 | `POST auth/refresh` | New token pair; the old refresh token stops working |
 | 🔒 `POST auth/logout` | Revoke this device's refresh token |
 | 🔒 `POST auth/password` | Change password; logs out all other devices |
-| 🔒 `GET me` / `PUT me` | View or edit my profile (`teams` is `[]` for now) |
+| 🔒 `GET me` / `PUT me` | View or edit my profile, with my teams and my role in each |
 
-Not built yet: teams, invites, channels, files, `/internal`.
+**Teams and invites** (all 🔒)
+
+| Endpoint | What it does |
+|---|---|
+| `POST teams` / `GET teams` | Create a team (I become owner, `general` is created) / list my teams |
+| `GET` / `PUT` / `DELETE teams/{team_id}` | View, rename (owner/admin) or delete (owner only) a team |
+| `GET teams/{team_id}/members` | Team directory, searchable and paginated; `user_ids` to look up people |
+| `PUT` / `DELETE teams/{team_id}/members/{user_id}` | Change someone's role / remove them (owner/admin) |
+| `POST teams/{team_id}/leave` | Leave a team (the last owner can't) |
+| `POST` / `GET teams/{team_id}/invites` | Create an invite link / list them |
+| `DELETE invites/{invite_id}` | Revoke an invite link |
+
+**Channels** (all 🔒)
+
+| Endpoint | What it does |
+|---|---|
+| `GET teams/{team_id}/channels` | My sidebar: channels and DMs I'm in |
+| `GET teams/{team_id}/channels/browse` | Public channels I haven't joined, searchable and paginated |
+| `POST teams/{team_id}/channels` | Create a public or private channel (I become owner) |
+| `GET channels/{channel_id}` | Channel details and my settings in it |
+| `PUT channels/{channel_id}` | Rename or change the topic (channel owner, team owner or admin) |
+| `POST channels/{channel_id}/archive` | Make it read-only; `general` can't be archived |
+| `POST channels/{channel_id}/join` / `leave` | Join a public channel / leave one; the last owner of a private channel hands it to the member who joined first |
+| `GET` / `POST channels/{channel_id}/members` | List members (paginated) / add up to 50 team members |
+| `DELETE channels/{channel_id}/members/{user_id}` | Remove someone (channel owner, team owner or admin) |
+
+Not built yet: opening an invite link (`GET` / `POST invites/{invite_code}...`), DMs, channel settings
+(`PUT channels/{channel_id}/me`), files, `/internal`, and Redis events (`core.events`).
 
 ## Daily commands
 
