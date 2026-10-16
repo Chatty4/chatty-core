@@ -27,7 +27,7 @@ class RegisterRequest(serializers.Serializer):
         return attrs
 
     def validate_email(self, value: str) -> str:
-        return User.objects.normalize_email(value).lower()
+        return User.objects.normalize_email(value)
 
 
 class UserResponse(serializers.ModelSerializer):
@@ -43,7 +43,7 @@ class LoginRequest(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
     def validate_email(self, value: str) -> str:
-        return User.objects.normalize_email(value).lower()
+        return User.objects.normalize_email(value)
 
 
 class TokenPairResponse(serializers.Serializer):

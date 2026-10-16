@@ -5,9 +5,14 @@ from django.db import models
 
 
 class UserManager(BaseUserManager):
+    @classmethod
+    def normalize_email(cls, email: str | None) -> str:
+        """The whole address lowercased. Register, login and the admin all compare it this way."""
+        return super().normalize_email(email).lower()
+
     def create_user(self, email: str, display_name: str, password: str) -> User:
         user = self.model(
-            email=email,
+            email=self.normalize_email(email),
             display_name=display_name,
         )
         user.set_password(password)
@@ -35,6 +40,11 @@ class User(AbstractBaseUser):
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["display_name"]
+
+    def clean(self) -> None:
+        """Runs before the admin add and change forms save, so the admin stores lowercase too."""
+        super().clean()
+        self.email = type(self).objects.normalize_email(self.email)
 
     def has_perm(self, perm, obj=None):
         return self.is_staff
