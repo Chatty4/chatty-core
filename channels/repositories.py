@@ -119,7 +119,7 @@ class ChannelMemberRepository:
     def lock_owner_ids_sync(channel_id: UUID) -> list[UUID]:
         """Lock the channel row until the transaction ends, then return its owners' user ids.
 
-        Locking the channel, not the owner rows, make a second leave wait for the first one's
+        Locking the channel, not the owner rows, makes a second leave wait for the first one's
         hand-off, so it sees the member who was just promoted.
         """
         Channel.objects.select_for_update().filter(id=channel_id).first()
@@ -168,6 +168,6 @@ class ChannelMemberRepository:
                 ChannelMember(channel_id=channel_id, user_id=uid, notify_level=notify_level)
                 for uid in new_ids
             ],
-            ignore_conflicts=True,  # someone joined or was added by another requests meanwhile
+            ignore_conflicts=True,  # someone joined or was added by another request meanwhile
         )
         return new_ids

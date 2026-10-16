@@ -38,10 +38,12 @@ shared/                 code used by more than one app, no business rules
   exceptions.py         domain exceptions (NotFound, PermissionDenied, Conflict, ValidationFailed, ...)
   exception_handler.py  maps domain + DRF exceptions to the contract error body
   authentication.py     ServiceTokenAuthentication: X-Service-Token for /internal
-  permissions.py
+  codes.py              ErrorCode: every error code from api-core.md
+  http.py               client_ip(): real client IP behind Nginx
+  redis.py              Redis client and rate-limit helpers
   pagination.py         cursor pagination from api-core.md
-  events.py             Redis publisher for core.events (D-06, D-08)
-  storage.py            MinIO client and presigned URLs
+  events.py             (planned, CHAT-172) Redis publisher for core.events (D-06, D-08)
+  storage.py            (planned, files app) MinIO client and presigned URLs
 authn/                  refresh token model, RS256 JWT issuance, rotation and revocation
   authentication.py     JWTAuthentication: Bearer JWT for /api/core/v1
   models.py             RefreshToken (stores SHA-256 hash only, never the raw token)
@@ -53,15 +55,16 @@ authn/                  refresh token model, RS256 JWT issuance, rotation and re
   models.py             tables only: fields, constraints, indexes. No business logic
   repositories.py       the only place that queries the ORM
   services.py           business rules, transactions, events. No DRF, no request objects
+  schemas.py            dataclasses that services return (TeamResult, ChannelAccess, ...)
   serializers.py        request validation and response shapes
   views.py              public API endpoints (thin)
   urls.py
-  internal/             /internal endpoints for chatty-chat
+  internal/             (planned) /internal endpoints for chatty-chat
     views.py
     serializers.py
     urls.py
   migrations/
-tests/<app>/            test_services.py, test_views.py, test_internal.py, ...
+tests/<app>/            one file per endpoint or rule (test_join_channel.py, test_require_access.py, ...)
 ```
 
 Start each layer as one module. Turn it into a package (`services/__init__.py`, `services/invites.py`, ...)
