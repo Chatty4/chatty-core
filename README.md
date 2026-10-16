@@ -55,7 +55,7 @@ Exact requests, responses and errors: `chatty-infra/docs/api-core.md`.
 | 🔒 `POST auth/password` | Change password; logs out all other devices |
 | 🔒 `GET me` / `PUT me` | View or edit my profile, with my teams and my role in each |
 
-**Teams and invites** (all 🔒)
+**Teams and invites** (all 🔒 except opening an invite link)
 
 | Endpoint | What it does |
 |---|---|
@@ -66,6 +66,8 @@ Exact requests, responses and errors: `chatty-infra/docs/api-core.md`.
 | `POST teams/{team_id}/leave` | Leave a team (the last owner can't) |
 | `POST` / `GET teams/{team_id}/invites` | Create an invite link / list them |
 | `DELETE invites/{invite_id}` | Revoke an invite link |
+| `GET invites/{invite_code}` | No token: the invite page, which team and whether the link still works (30 per minute per IP) |
+| `POST invites/{invite_code}/join` | Join the team as `member` and its default channels; 200 if already in it |
 
 **Channels** (all 🔒)
 
@@ -81,8 +83,8 @@ Exact requests, responses and errors: `chatty-infra/docs/api-core.md`.
 | `GET` / `POST channels/{channel_id}/members` | List members (paginated) / add up to 50 team members |
 | `DELETE channels/{channel_id}/members/{user_id}` | Remove someone (channel owner, team owner or admin) |
 
-Not built yet: opening an invite link (`GET` / `POST invites/{invite_code}...`), DMs, channel settings
-(`PUT channels/{channel_id}/me`), files, `/internal`, and Redis events (`core.events`).
+Not built yet: DMs, channel settings (`PUT channels/{channel_id}/me`), files, `/internal`, and Redis
+events (`core.events`).
 
 ## Daily commands
 
