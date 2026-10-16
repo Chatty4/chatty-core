@@ -5,7 +5,6 @@ from datetime import timedelta
 from uuid import UUID
 
 import pytest
-from asgiref.sync import sync_to_async
 from django.db import connections
 from django.utils import timezone
 
@@ -14,15 +13,9 @@ from channels.repositories import ChannelMemberRepository
 from channels.services import ChannelService
 from teams.models import TeamMember
 from teams.services import TeamService
-from users.models import User
+from tests.helpers import make_user
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-async def make_user(email: str) -> User:
-    return await sync_to_async(User.objects.create_user)(
-        email=email, display_name="Ana Pop", password="correct horse battery"
-    )
 
 
 async def test_last_owner_and_first_joined_leave_at_once(monkeypatch):

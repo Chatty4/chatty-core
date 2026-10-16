@@ -1,7 +1,6 @@
 import uuid
 
 import pytest
-from asgiref.sync import sync_to_async
 from django.utils import timezone
 
 from channels.models import Channel, ChannelMember
@@ -10,15 +9,9 @@ from shared.codes import ErrorCode
 from shared.exceptions import BadRequest, Conflict, NotFound, PermissionDenied
 from teams.models import Team, TeamMember
 from teams.services import TeamService
-from users.models import User
+from tests.helpers import make_user
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-async def make_user(email: str) -> User:
-    return await sync_to_async(User.objects.create_user)(
-        email=email, display_name="Ana Pop", password="correct horse battery"
-    )
 
 
 @pytest.fixture

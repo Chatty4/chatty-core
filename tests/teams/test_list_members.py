@@ -3,9 +3,9 @@ import uuid
 import pytest
 from asgiref.sync import sync_to_async
 
-from authn.services import AuthnService
 from teams.models import TeamMember
 from teams.services import TeamService
+from tests.helpers import headers_for
 from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -17,11 +17,6 @@ async def make_user(email: str, name: str) -> User:
     return await sync_to_async(User.objects.create_user)(
         email=email, display_name=name, password="correct horse battery"
     )
-
-
-async def headers_for(user: User) -> dict:
-    tokens = await AuthnService().issue_tokens(user)
-    return {"Authorization": f"Bearer {tokens.access_token}"}
 
 
 @pytest.fixture
