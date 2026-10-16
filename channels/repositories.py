@@ -88,3 +88,14 @@ class ChannelMemberRepository:
     @staticmethod
     async def count(channel_id: UUID) -> int:
         return await ChannelMember.objects.filter(channel_id=channel_id).acount()
+
+    @staticmethod
+    async def get_or_create(channel_id: UUID, user_id: UUID, notify_level: str) -> ChannelMember:
+        """
+        The user's membership, created as a plain member if missing.
+        Safe when two requests race.
+        """
+        member, _ = await ChannelMember.objects.aget_or_create(
+            channel_id=channel_id, user_id=user_id, defaults={"notify_level": notify_level}
+        )
+        return member

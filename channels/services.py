@@ -98,3 +98,19 @@ class ChannelService:
     ) -> tuple[list[Channel], str | None]:
         await TeamService.require_member(team_id, user_id)
         return await ChannelRepository.browse(team_id, user_id, q, cursor, limit)
+
+    @staticmethod
+    async def join(channel_id: UUID, user_id: UUID) -> ChannelMember:
+        channel = await ChannelRepository.get_with_team(channel_id)
+        if channel is None:
+            raise NotFound(ErrorCode.CHANNEL_NOT_FOUND)
+        await TeamService.require_member(channel.team.id, user_id)
+        if channel.kind != Channel.Kind.PUBLIC:
+            raise PermissionDenied(ErrorCode.CANNOT_JOIN_PRIVATE)
+        if channel.archived_at is not None:
+            raise Conflict(ErrorCode.CHANNEL_ARCHIVED)
+        # TODO(CHAT-172): publish membership.changed (added) after commit, only when newly created
+
+        return await ChannelMemberRepository.get_or_create(
+            channel_id, user_id, ChannelMember.NotifyLevel.MENTIONS
+        )

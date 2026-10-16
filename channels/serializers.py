@@ -77,3 +77,7 @@ class ChannelDetailResponse(serializers.Serializer):
             "member_count": detail.member_count,
             "my": MySettingsResponse(detail.my).data if detail.my else None,
         }
+
+
+class JoinChannelResponse(MySettingsResponse):
+    channel_id = serializers.UUIDField()
