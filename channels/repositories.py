@@ -78,6 +78,18 @@ class ChannelMemberRepository:
         )
 
     @staticmethod
+    def list_private_channel_ids_sync(team_id: UUID, user_id: UUID) -> list[UUID]:
+        """The team's private channels the user is in, ordered by id so their locks are always
+        taken in the same order."""
+        return list(
+            ChannelMember.objects.filter(
+                user_id=user_id, channel__team_id=team_id, channel__kind=Channel.Kind.PRIVATE
+            )
+            .order_by("channel_id")
+            .values_list("channel_id", flat=True)
+        )
+
+    @staticmethod
     def delete_in_team_sync(team_id: UUID, user_id: UUID) -> None:
         """Remove the user from every channel of the team, DMs included."""
         ChannelMember.objects.filter(channel__team_id=team_id, user_id=user_id).delete()

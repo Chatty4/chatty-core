@@ -62,8 +62,8 @@ class AuthnService:
         return self._build_token_pair(str(user.id), raw)
 
     async def refresh_tokens(self, raw_token: str) -> TokenPairSchema:
-        """Rotate a refresh token: revoke the old one and issue a new pair. Raises Unauthorized if
-        the token is missing, revoked, or expired."""
+        """Rotate a refresh token: mark the old one as rotated and issue a new pair. Reusing a
+        rotated token deletes every refresh token of the user."""
         new_raw, new_hash, new_expires_at = self._new_refresh_token()
 
         token_hash = _hash_token(raw_token)
@@ -72,15 +72,15 @@ class AuthnService:
         )
 
         if reuse:
-            await RefreshTokenRepository.revoke_all_for_user(user_id)
+            await RefreshTokenRepository.delete_all_for_user(user_id)
             raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
 
         return self._build_token_pair(user_id, new_raw)
 
     async def revoke_refresh_token(self, raw_token: str, user_id: str) -> None:
-        """Revoke a single refresh token owned by user_id.
+        """Log out one device by deleting its refresh token.
         Raises PermissionDenied if the token belongs to a different user.
-        No-op if already revoked or not found (contract).
+        No-op if unknown or already rotated (contract).
         """
         token = await RefreshTokenRepository.get_by_hash(_hash_token(raw_token))
         if token is None:
@@ -89,7 +89,7 @@ class AuthnService:
             raise PermissionDenied(ErrorCode.FORBIDDEN)
         if token.revoked_at is not None:
             return
-        await RefreshTokenRepository.revoke(token)
+        await RefreshTokenRepository.delete(token)
 
     async def check_own_refresh_token(self, raw_token: str, user_id: str) -> None:
         """Raise unless raw_token is a live refresh token owned by user_id."""
@@ -102,9 +102,9 @@ class AuthnService:
             raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
 
     async def revoke_all_tokens(self, user_id: str, keep_raw_token: str | None = None) -> None:
-        """Revoke all active refresh tokens for a user, except keep_raw_token (this device)."""
+        """Delete all refresh tokens of a user, except keep_raw_token (this device)."""
         keep_hash = _hash_token(keep_raw_token) if keep_raw_token else None
-        await RefreshTokenRepository.revoke_all_for_user(user_id, except_hash=keep_hash)
+        await RefreshTokenRepository.delete_all_for_user(user_id, except_hash=keep_hash)
 
     @staticmethod
     def decode_access_token(token: str) -> dict:

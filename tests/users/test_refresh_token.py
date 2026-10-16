@@ -126,8 +126,8 @@ async def test_refresh_missing_field(async_client, user):
     assert response.json()["error"]["fields"] == {"refresh_token": "required"}
 
 
-async def test_refresh_token_reuse_revokes_all_sessions(async_client, user):
-    """Replaying a rotated token is treated as theft: all active tokens are revoked."""
+async def test_refresh_token_reuse_deletes_all_sessions(async_client, user):
+    """Replaying a rotated token is treated as theft: every refresh token is deleted."""
     import hashlib
 
     from authn.services import AuthnService
@@ -153,11 +153,10 @@ async def test_refresh_token_reuse_revokes_all_sessions(async_client, user):
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "invalid_refresh_token"
 
-    # session_b must also be revoked now (all sessions wiped)
+    # session_b is gone too (all sessions wiped)
     b_hash = hashlib.sha256(session_b.refresh_token.encode()).hexdigest()
-    token_b = await RefreshToken.objects.filter(token_hash=b_hash).afirst()
-    assert token_b is not None
-    assert token_b.revoked_at is not None
+    assert not await RefreshToken.objects.filter(token_hash=b_hash).aexists()
+    assert not await RefreshToken.objects.filter(user=user).aexists()
 
 
 async def test_refresh_works_with_expired_access_token(async_client, user, settings):

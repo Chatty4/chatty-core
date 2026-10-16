@@ -107,11 +107,16 @@ class TeamMemberRepository:
 
     @staticmethod
     def lock_owner_ids_sync(team_id: UUID) -> list[UUID]:
-        """Lock the team's owner rows until the transaction ends, and return their user ids."""
+        """Lock the team row until the transaction ends, then return its owners' user ids.
+
+        Locking the team, not the owner rows, makes a second change wait for the first one
+        and then see its result (a member just promoted or demoted).
+        """
+        TeamRepository.lock_sync(team_id)
         return list(
-            TeamMember.objects.select_for_update()
-            .filter(team_id=team_id, role=TeamMember.Role.OWNER)
-            .values_list("user_id", flat=True)
+            TeamMember.objects.filter(team_id=team_id, role=TeamMember.Role.OWNER).values_list(
+                "user_id", flat=True
+            )
         )
 
     @staticmethod
