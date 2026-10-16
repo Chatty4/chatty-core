@@ -1,21 +1,14 @@
 import pytest
-from asgiref.sync import sync_to_async
 
 from shared.codes import ErrorCode
 from shared.exceptions import PermissionDenied
 from teams.models import TeamMember
 from teams.services import TeamService
-from users.models import User
+from tests.helpers import make_user
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 ADMINS = {TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
-
-
-async def make_user(email: str) -> User:
-    return await sync_to_async(User.objects.create_user)(
-        email=email, display_name="Ana Pop", password="correct horse battery"
-    )
 
 
 async def test_role_outside_roles_is_forbidden():

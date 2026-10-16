@@ -4,22 +4,15 @@ from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID
 
 import pytest
-from asgiref.sync import sync_to_async
 from django.db import connections
 
 from channels.models import ChannelMember
 from shared.exceptions import Gone
 from teams.models import Invite, Team, TeamMember
 from teams.services import InviteService, TeamService
-from users.models import User
+from tests.helpers import make_user
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-async def make_user(email: str) -> User:
-    return await sync_to_async(User.objects.create_user)(
-        email=email, display_name="Ana Pop", password="correct horse battery"
-    )
 
 
 async def test_parallel_joins_on_single_use_invite(monkeypatch):
