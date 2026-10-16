@@ -189,3 +189,15 @@ class ChannelService:
         # TODO(CHAT-172): publish channel.updated after commit
         member_count = await ChannelMemberRepository.count(channel_id)
         return ChannelDetail(channel, member_count, access.channel_member)
+
+    @staticmethod
+    async def archive(channel_id: UUID, user_id: UUID) -> ChannelDetail:
+        access = await ChannelService.require_access(channel_id, user_id, "manage")
+        channel = access.channel
+        if channel.is_default:
+            raise BadRequest(ErrorCode.CANNOT_ARCHIVE_DEFAULT)
+        if channel.archived_at is None:  # not archived yet/ if it already is, return 200
+            channel = await ChannelRepository.archive(channel)
+            # TODO(CHAT-172): publich channel.updated (archived: true) after commit
+        member_count = await ChannelMemberRepository.count(channel_id)
+        return ChannelDetail(channel, member_count, access.channel_member)

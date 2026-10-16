@@ -89,3 +89,9 @@ class ChannelMemberDetailView(UserAPIView):
     async def delete(self, request, channel_id: UUID, user_id: UUID):
         await ChannelService.remove_member(channel_id, request.user.id, user_id)
         return Response(status=204)
+
+
+class ArchiveChannelView(UserAPIView):
+    async def post(self, request, channel_id: UUID):
+        detail = await ChannelService.archive(channel_id, request.user.id)
+        return Response(ChannelDetailResponse(detail).data)
