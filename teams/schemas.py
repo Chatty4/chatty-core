@@ -44,3 +44,19 @@ class BaseInviteResult:
 @dataclass
 class InviteResult(BaseInviteResult):
     team_id: UUID
+
+
+@dataclass
+class TeamPreview:
+    name: str
+    icon_url: str | None
+    member_count: int
+
+
+@dataclass
+class InviteLookupResult:
+    code: str
+    valid: bool
+    reason: str | None
+    team: TeamPreview
+    expires_at: datetime | None

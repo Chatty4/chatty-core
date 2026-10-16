@@ -4,21 +4,27 @@ from uuid import UUID
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
 from shared.codes import ErrorCode
-from shared.exceptions import Conflict, NotFound, PermissionDenied
+from shared.exceptions import Conflict, NotFound, PermissionDenied, RateLimited
+from shared.redis import rate_limit
 from teams.models import Invite, Team, TeamMember
 from teams.repositories import InviteRepository, TeamMemberRepository, TeamRepository
 from teams.schemas import (
     BaseInviteResult,
     CreateTeamResult,
+    InviteLookupResult,
     InviteResult,
     TeamDetailResult,
+    TeamPreview,
     TeamResult,
 )
 
+LOOKUP_LIMIT = 30
+LOOKUP_WINDOW = 60
 MANAGERS = {TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
 
 
@@ -224,8 +230,13 @@ class TeamService:
 
 class InviteService:
     @staticmethod
-    async def _get_invite_or_404(invite_id: UUID) -> Invite:
-        invite = await InviteRepository.get_by_id(invite_id)
+    async def _get_invite_or_404(key: UUID | str) -> Invite:
+        """Fetch an invite or raise invite_not_found. Pass a UUID to look up by id,
+        a str to look up by code (also loads the team via select_related)."""
+        if isinstance(key, UUID):
+            invite = await InviteRepository.get_by_id(key)
+        else:
+            invite = await InviteRepository.get_by_code(key)
         if invite is None:
             raise NotFound(ErrorCode.INVITE_NOT_FOUND)
         return invite
@@ -300,3 +311,35 @@ class InviteService:
         if invite.revoked_at is not None:
             return
         await InviteRepository.revoke(invite)
+
+    @staticmethod
+    def _check_validity(invite: Invite) -> tuple[bool, str | None]:
+        now = timezone.now()
+        if invite.revoked_at is not None:
+            return False, "revoked"
+        if invite.expires_at is not None and invite.expires_at <= now:
+            return False, "expired"
+        if invite.max_uses != 0 and invite.uses >= invite.max_uses:
+            return False, "used_up"
+        return True, None
+
+    @staticmethod
+    async def lookup(code: str, ip: str) -> InviteLookupResult:
+        """Public invite preview. Rate limited 30/min per IP"""
+        retry_after = await rate_limit(f"invite_lookup:{ip}", LOOKUP_LIMIT, LOOKUP_WINDOW)
+        if retry_after:
+            raise RateLimited(retry_after)
+
+        invite = await InviteService._get_invite_or_404(code)
+
+        valid, reason = InviteService._check_validity(invite)
+        member_count = await TeamMemberRepository.count_members(invite.team.id)
+
+        # TODO: presigned URL once file uploads are done
+        return InviteLookupResult(
+            code=code,
+            valid=valid,
+            reason=reason,
+            team=TeamPreview(name=invite.team.name, icon_url=None, member_count=member_count),
+            expires_at=invite.expires_at,
+        )

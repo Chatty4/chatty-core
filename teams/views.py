@@ -2,14 +2,16 @@ from uuid import UUID
 
 from rest_framework.response import Response
 
+from shared.http import client_ip
 from shared.serializers import validated
-from shared.views import UserAPIView
+from shared.views import AsyncAPIView, UserAPIView
 from teams.serializers import (
     BaseInviteResponse,
     ChangeRoleRequest,
     CreateInviteRequest,
     CreateTeamRequest,
     CreateTeamResponse,
+    InviteLookupResponse,
     InviteResponse,
     MemberRoleResponse,
     TeamDetailResponse,
@@ -88,3 +90,12 @@ class InviteDetailView(UserAPIView):
     async def delete(self, request, invite_id: UUID):
         await InviteService.revoke(invite_id=invite_id, user_id=request.user.id)
         return Response(status=204)
+
+
+class InviteLookupView(AsyncAPIView):
+    authentication_classes = []
+    permission_classes = []
+
+    async def get(self, request, invite_code: str):
+        result = await InviteService.lookup(code=invite_code, ip=client_ip(request))
+        return Response(InviteLookupResponse(result).data)

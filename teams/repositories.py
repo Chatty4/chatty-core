@@ -130,6 +130,18 @@ class InviteRepository:
         return await Invite.objects.filter(id=invite_id).afirst()
 
     @staticmethod
+    async def get_by_code(code: str) -> Invite | None:
+        """
+        Return an invite by code with its team loaded, or None if
+        not found or team is deleted.
+        """
+        return await (
+            Invite.objects.select_related("team")
+            .filter(code=code, team__deleted_at__isnull=True)
+            .afirst()
+        )
+
+    @staticmethod
     def _active_qs(team_id: UUID) -> QuerySet[Invite]:
         """Base queryset for active invites: not revoked, not expired, not used up."""
         now = timezone.now()
