@@ -145,6 +145,10 @@ Async by default, with explicit sync islands.
   `transaction.atomic` or `on_commit`.
 - The autouse fixture in `tests/conftest.py` closes connections opened inside `sync_to_async`; without it
   the test database can't be dropped. Keep it.
+- Shared test helpers (`make_user`, `headers_for`) live in `tests/helpers.py`; import them, don't copy them.
+  Fixtures stay in `conftest.py`.
+- Run one `pytest` at a time: every run uses the same test database (`test_core_db`), so two runs at once
+  break each other's setup. After an interrupted run, `pytest --create-db` rebuilds it.
 - Test services directly for business rules, and views for status codes and response shapes from the contract.
 - Every bug fix comes with a test that fails without the fix.
 - Race tests act like two uvicorn workers: run each request's sync transaction in its own thread
