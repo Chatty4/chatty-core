@@ -158,7 +158,7 @@ class ChannelService:
         added = await ChannelMemberRepository.add_many(
             channel_id, user_ids, ChannelMember.NotifyLevel.MENTIONS
         )
-        # TODO(CHAT-172): publish membership.changed (added) for eaech id in 'added' after commit
+        # TODO(CHAT-172): publish membership.changed (added) for each id in 'added' after commit
 
         return added, [uid for uid in user_ids if uid not in added]
 

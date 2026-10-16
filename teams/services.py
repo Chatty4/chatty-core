@@ -132,7 +132,7 @@ class TeamService:
 
     @staticmethod
     async def delete(team_id: UUID, user_id: UUID) -> None:
-        """TODO: publish team.deleted event after commit."""
+        """TODO(CHAT-172): publish team.deleted event after commit."""
         team, _ = await TeamService.require_member(team_id, user_id, roles={TeamMember.Role.OWNER})
         await TeamRepository.delete(team)
 
@@ -214,7 +214,7 @@ class TeamService:
 
     @staticmethod
     async def leave(team_id: UUID, user_id: UUID) -> None:
-        """TODO: publish team.member.changed (left) after commit."""
+        """TODO(CHAT-172): publish team.member.changed (left) after commit."""
         await TeamService.require_member(team_id, user_id)
         await sync_to_async(TeamService._leave_sync)(team_id, user_id)
 
