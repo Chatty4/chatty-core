@@ -102,11 +102,16 @@ class ChannelMemberRepository:
 
     @staticmethod
     def lock_owner_ids_sync(channel_id: UUID) -> list[UUID]:
-        """Lock the channel's owner rows until the transaction ends, and return their user ids."""
+        """Lock the channel row until the transaction ends, then return its owners' user ids.
+
+        Locking the channel, not the owner rows, make a second leave wait for the first one's
+        hand-off, so it sees the member who was just promoted.
+        """
+        Channel.objects.select_for_update().filter(id=channel_id).first()
         return list(
-            ChannelMember.objects.select_for_update()
-            .filter(channel_id=channel_id, role=ChannelMember.Role.OWNER)
-            .values_list("user_id", flat=True)
+            ChannelMember.objects.filter(
+                channel_id=channel_id, role=ChannelMember.Role.OWNER
+            ).values_list("user_id", flat=True)
         )
 
     @staticmethod
