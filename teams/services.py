@@ -226,7 +226,13 @@ class TeamService:
     @staticmethod
     @transaction.atomic
     def _remove_member_sync(team_id: UUID, user_id: UUID) -> None:
-        """Take the user out of a team and all its channels."""
+        """Take the user out of a team and all its channels. In a private channel where they
+        were the only owner, the member who joined first becomes owner, as with channel leave."""
+        for channel_id in ChannelMemberRepository.list_private_channel_ids_sync(team_id, user_id):
+            owner_ids = ChannelMemberRepository.lock_owner_ids_sync(channel_id)
+            ChannelMemberRepository.delete_sync(channel_id, user_id)
+            if owner_ids == [user_id]:
+                ChannelMemberRepository.promote_first_joined_sync(channel_id)
         ChannelMemberRepository.delete_in_team_sync(team_id, user_id)
         TeamMemberRepository.delete_sync(team_id, user_id)
         # TODO(CHAT-172): publish team.member.changed (removed) after commit.
