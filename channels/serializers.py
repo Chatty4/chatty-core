@@ -81,3 +81,9 @@ class ChannelDetailResponse(serializers.Serializer):
 
 class JoinChannelResponse(MySettingsResponse):
     channel_id = serializers.UUIDField()
+
+
+class ChannelMemberResponse(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    role = serializers.CharField()
+    joined_at = serializers.DateTimeField()

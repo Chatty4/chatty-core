@@ -131,3 +131,10 @@ class ChannelService:
         if channel.kind == Channel.Kind.PRIVATE and owner_ids == [user_id]:
             ChannelMemberRepository.promote_first_joined_sync(channel.id)
         # TODO(CHAT-172): publish membership.changed (removed) after commit
+
+    @staticmethod
+    async def list_members(
+        channel_id: UUID, user_id: UUID, limit: int, cursor: str | None = None
+    ) -> tuple[list[ChannelMember], str | None]:
+        await ChannelService.require_access(channel_id, user_id, "read")
+        return await ChannelMemberRepository.page(channel_id, cursor, limit)

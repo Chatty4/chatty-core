@@ -6,12 +6,14 @@ from channels.serializers import (
     BrowseChannelResponse,
     BrowseChannelsQuery,
     ChannelDetailResponse,
+    ChannelMemberResponse,
     ChannelResponse,
     CreateChannelRequest,
     JoinChannelResponse,
     MyChannelResponse,
 )
 from channels.services import ChannelService
+from shared.pagination import PageQuery
 from shared.serializers import validated
 from shared.views import UserAPIView
 
@@ -55,3 +57,17 @@ class LeaveChannelView(UserAPIView):
     async def post(self, request, channel_id: UUID):
         await ChannelService.leave(channel_id, request.user.id)
         return Response(status=204)
+
+
+class ChannelMembersView(UserAPIView):
+    async def get(self, request, channel_id: UUID):
+        params = validated(PageQuery, request.query_params)
+        members, next_cursor = await ChannelService.list_members(
+            channel_id, request.user.id, **params
+        )
+        return Response(
+            {
+                "members": ChannelMemberResponse(members, many=True).data,
+                "next_cursor": next_cursor,
+            }
+        )

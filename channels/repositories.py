@@ -124,3 +124,11 @@ class ChannelMemberRepository:
         if first:
             first.role = ChannelMember.Role.OWNER
             first.save(update_fields=["role"])
+
+    @staticmethod
+    async def page(
+        channel_id: UUID, cursor: str | None, limit: int
+    ) -> tuple[list[ChannelMember], str | None]:
+        """A page of the channel's members, oldest first"""
+        qs = ChannelMember.objects.filter(channel_id=channel_id)
+        return await paginate(qs, ("joined_at", "user_id"), cursor, limit, "channel_members")
