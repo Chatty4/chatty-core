@@ -9,7 +9,7 @@ from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
 from channels.schemas import ChannelAccess, ChannelDetail, MyChannel
 from shared.codes import ErrorCode
-from shared.exceptions import Conflict, NotFound, PermissionDenied
+from shared.exceptions import BadRequest, Conflict, NotFound, PermissionDenied
 from teams.models import Team
 from teams.repositories import TeamMemberRepository
 from teams.services import TeamService
@@ -114,3 +114,20 @@ class ChannelService:
         return await ChannelMemberRepository.get_or_create(
             channel_id, user_id, ChannelMember.NotifyLevel.MENTIONS
         )
+
+    @staticmethod
+    async def leave(channel_id: UUID, user_id: UUID) -> None:
+        access = await ChannelService.require_access(channel_id, user_id, "member")
+        if access.channel.kind == Channel.Kind.DM:
+            raise BadRequest(ErrorCode.CANNOT_LEAVE_DM)
+        await sync_to_async(ChannelService._leave_sync)(access.channel, user_id)
+
+    @staticmethod
+    @transaction.atomic
+    def _leave_sync(channel: Channel, user_id: UUID) -> None:
+        """The owner lock stops two owners leaving at once from both skipping the hand-off."""
+        owner_ids = ChannelMemberRepository.lock_owner_ids_sync(channel.id)
+        ChannelMemberRepository.delete_sync(channel.id, user_id)
+        if channel.kind == Channel.Kind.PRIVATE and owner_ids == [user_id]:
+            ChannelMemberRepository.promote_first_joined_sync(channel.id)
+        # TODO(CHAT-172): publish membership.changed (removed) after commit

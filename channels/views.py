@@ -49,3 +49,9 @@ class JoinChannelView(UserAPIView):
     async def post(self, request, channel_id: UUID):
         member = await ChannelService.join(channel_id, request.user.id)
         return Response(JoinChannelResponse(member).data)
+
+
+class LeaveChannelView(UserAPIView):
+    async def post(self, request, channel_id: UUID):
+        await ChannelService.leave(channel_id, request.user.id)
+        return Response(status=204)

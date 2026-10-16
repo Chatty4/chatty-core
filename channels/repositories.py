@@ -99,3 +99,28 @@ class ChannelMemberRepository:
             channel_id=channel_id, user_id=user_id, defaults={"notify_level": notify_level}
         )
         return member
+
+    @staticmethod
+    def lock_owner_ids_sync(channel_id: UUID) -> list[UUID]:
+        """Lock the channel's owner rows until the transaction ends, and return their user ids."""
+        return list(
+            ChannelMember.objects.select_for_update()
+            .filter(channel_id=channel_id, role=ChannelMember.Role.OWNER)
+            .values_list("user_id", flat=True)
+        )
+
+    @staticmethod
+    def delete_sync(channel_id: UUID, user_id: UUID) -> None:
+        ChannelMember.objects.filter(channel_id=channel_id, user_id=user_id).delete()
+
+    @staticmethod
+    def promote_first_joined_sync(channel_id: UUID) -> None:
+        """Make the member who joined first the owner. No-op when the channel is empty."""
+        first = (
+            ChannelMember.objects.filter(channel_id=channel_id)
+            .order_by("joined_at", "user_id")
+            .first()
+        )
+        if first:
+            first.role = ChannelMember.Role.OWNER
+            first.save(update_fields=["role"])
