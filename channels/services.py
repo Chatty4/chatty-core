@@ -165,7 +165,7 @@ class ChannelService:
         channel = await ChannelRepository.get_with_team(channel_id)
         if channel is None:
             raise NotFound(ErrorCode.CHANNEL_NOT_FOUND)
-        if channel.kind == Channel.Kind.DM: # before "manage", which refuse every DM as forbidden
+        if channel.kind == Channel.Kind.DM:  # before "manage", which refuse every DM as forbidden
             raise BadRequest(ErrorCode.NOT_ALLOWED_FOR_DM)
         if target_id == user_id:
             raise Conflict(ErrorCode.USE_LEAVE)
