@@ -11,7 +11,7 @@ _VALID_TIMEZONES = available_timezones()
 
 
 class RegisterRequest(serializers.Serializer):
-    email = serializers.EmailField()
+    email = serializers.EmailField(max_length=254)
     display_name = serializers.CharField(max_length=60)
     password = serializers.CharField(write_only=True)
 
@@ -39,7 +39,7 @@ class UserResponse(serializers.ModelSerializer):
 
 
 class LoginRequest(serializers.Serializer):
-    email = serializers.EmailField()
+    email = serializers.EmailField(max_length=254)
     password = serializers.CharField(write_only=True)
 
     def validate_email(self, value: str) -> str:

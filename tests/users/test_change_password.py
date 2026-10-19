@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from authn.models import RefreshToken
 from authn.services import AuthnService
-from shared.redis import get_redis_client
+from shared.redis import get_redis_client, rate_limit
 from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -113,6 +113,30 @@ async def test_wrong_old_password_rate_limited_after_5_failures(async_client, us
     response = await change(async_client, this_device, old="wrong password")
 
     assert response.status_code == 429
+
+
+async def test_over_limit_rejected_before_hashing(async_client, user, this_device, monkeypatch):
+    # Simulate parallel requests: all passed any pre-check, the counter is already full
+    async def not_limited(key, limit):
+        return 0
+
+    monkeypatch.setattr("users.services.is_rate_limited", not_limited)
+    for _ in range(5):
+        await rate_limit(f"change_pw_fail:{user.id}", 5, 900)
+
+    hashed = []
+
+    async def fake_check(self, password):
+        hashed.append(password)
+        return True
+
+    monkeypatch.setattr(User, "acheck_password", fake_check)
+
+    response = await change(async_client, this_device)
+
+    assert response.status_code == 429
+    assert hashed == []  # no hash work was done
+    assert await password_is_old(user)
 
 
 async def test_unknown_refresh_token(async_client, user, this_device, other_device):
