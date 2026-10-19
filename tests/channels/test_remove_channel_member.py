@@ -128,3 +128,22 @@ async def test_missing_channel_is_404(async_client, owner, member):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "channel_not_found"
+
+
+async def test_stranger_gets_forbidden_on_a_dm(async_client, team, member):
+    dm = await Channel.objects.acreate(team_id=team.id, kind=Channel.Kind.DM, dm_key="x")
+    await add_to(dm.id, member)
+    stranger = await make_user("stranger@example.com")
+
+    response = await remove(async_client, dm.id, member.id, stranger)
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+
+
+async def test_stranger_removing_themselves_gets_forbidden(async_client, team):
+    stranger = await make_user("stranger@example.com")
+
+    response = await remove(async_client, team.general_channel_id, stranger.id, stranger)
+
+    assert response.status_code == 403
