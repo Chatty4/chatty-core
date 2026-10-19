@@ -119,6 +119,20 @@ async def test_join_adds_user_to_default_channel(
     assert cm.notify_level == ChannelMember.NotifyLevel.MENTIONS
 
 
+async def test_join_with_leftover_channel_membership(
+    async_client, invite, general, joiner, joiner_auth
+):
+    # A channel row left behind when a channel join raced with removal from the team.
+    await ChannelMember.objects.acreate(
+        channel=general, user=joiner, notify_level=ChannelMember.NotifyLevel.MENTIONS
+    )
+
+    response = await async_client.post(url(invite.code), headers=joiner_auth)
+
+    assert response.status_code == 201
+    assert await ChannelMember.objects.filter(channel=general, user=joiner).acount() == 1
+
+
 async def test_join_adds_user_to_every_default_channel(
     async_client, invite, team, owner, general, joiner, joiner_auth
 ):

@@ -2,7 +2,17 @@ from datetime import timedelta
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
-from django.db.models import Count, F, IntegerField, OuterRef, Q, QuerySet, Subquery
+from django.db.models import (
+    Case,
+    Count,
+    F,
+    IntegerField,
+    OuterRef,
+    Q,
+    QuerySet,
+    Subquery,
+    When,
+)
 from django.utils import timezone
 
 from shared.pagination import paginate
@@ -125,6 +135,33 @@ class TeamMemberRepository:
         )
 
     @staticmethod
+    def list_owned_team_ids_sync(user_id: UUID) -> list[UUID]:
+        """Ids of the live teams this user owns, sorted so their locks are always taken in the
+        same order."""
+        return list(
+            TeamMember.objects.filter(
+                user_id=user_id, role=TeamMember.Role.OWNER, team__deleted_at__isnull=True
+            )
+            .order_by("team_id")
+            .values_list("team_id", flat=True)
+        )
+
+    @staticmethod
+    def first_active_by_rank_sync(team_id: UUID) -> TeamMember | None:
+        """The team's first active member by role (owner, then admin, then member), then by who
+        joined first. None when nobody in the team is active."""
+        rank = Case(
+            When(role=TeamMember.Role.OWNER, then=0),
+            When(role=TeamMember.Role.ADMIN, then=1),
+            default=2,
+        )
+        return (
+            TeamMember.objects.filter(team_id=team_id, user__is_active=True)
+            .order_by(rank, "joined_at", "user_id")
+            .first()
+        )
+
+    @staticmethod
     def get_member_sync(team_id: UUID, user_id: UUID) -> TeamMember | None:
         return TeamMember.objects.filter(team_id=team_id, user_id=user_id).first()
 
@@ -204,6 +241,13 @@ class InviteRepository:
         """Set revoked_at to now."""
         invite.revoked_at = timezone.now()
         await invite.asave(update_fields=["revoked_at"])
+
+    @staticmethod
+    def revoke_created_by_sync(team_id: UUID, user_id: UUID) -> None:
+        """Revoke every invite this user created for the team that isn't revoked yet."""
+        Invite.objects.filter(
+            team_id=team_id, created_by_id=user_id, revoked_at__isnull=True
+        ).update(revoked_at=timezone.now())
 
     @staticmethod
     def lock_by_id_sync(invite_id: UUID) -> Invite:

@@ -19,13 +19,6 @@ async def _handle_lifespan(receive: Any, send: Any) -> None:
     while True:
         event = await receive()
         if event["type"] == "lifespan.startup":
-            try:
-                from shared.redis import get_redis_client
-
-                get_redis_client()
-            except Exception as exc:
-                await send({"type": "lifespan.startup.failed", "message": str(exc)})
-                return
             await send({"type": "lifespan.startup.complete"})
         elif event["type"] == "lifespan.shutdown":
             from asgiref.sync import sync_to_async

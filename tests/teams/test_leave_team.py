@@ -4,7 +4,7 @@ from django.utils import timezone
 
 from authn.services import AuthnService
 from channels.models import Channel, ChannelMember
-from teams.models import Team, TeamMember
+from teams.models import Invite, Team, TeamMember
 from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -66,6 +66,15 @@ async def test_leave_team_removes_team_membership(
 
     still_member = await TeamMember.objects.filter(team=team_with_member, user=member).aexists()
     assert not still_member
+
+
+async def test_leave_team_revokes_my_invites(async_client, team_with_member, member, member_auth):
+    invite = await Invite.objects.acreate(team=team_with_member, created_by=member, code="leaver01")
+
+    await async_client.post(url(team_with_member.id), headers=member_auth)
+
+    await invite.arefresh_from_db()
+    assert invite.revoked_at is not None
 
 
 async def test_leave_team_removes_channel_memberships(

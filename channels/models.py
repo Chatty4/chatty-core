@@ -75,7 +75,6 @@ class ChannelMember(models.Model):
     class Meta:
         db_table = "channel_members"
         unique_together = [("channel", "user")]
-        indexes = [models.Index(fields=["user"])]
 
     def __str__(self) -> str:
         return f"{self.user} in {self.channel} ({self.role})"

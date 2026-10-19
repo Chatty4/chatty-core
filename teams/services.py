@@ -222,8 +222,10 @@ class TeamService:
     @staticmethod
     @transaction.atomic
     def _remove_member_sync(team_id: UUID, user_id: UUID) -> None:
-        """Take the user out of a team and all its channels. In a private channel where they
-        were the only owner, the member who joined first becomes owner, as with channel leave."""
+        """Take the user out of a team and all its channels, and revoke the invites they created
+        (their links shouldn't keep letting people into a team they left). In a private channel
+        where they were the only owner, the member who joined first becomes owner, as with
+        channel leave."""
         for channel_id in ChannelMemberRepository.list_private_channel_ids_sync(team_id, user_id):
             owner_ids = ChannelMemberRepository.lock_owner_ids_sync(channel_id)
             ChannelMemberRepository.delete_sync(channel_id, user_id)
@@ -231,6 +233,7 @@ class TeamService:
                 ChannelMemberRepository.promote_first_joined_sync(channel_id)
         ChannelMemberRepository.delete_in_team_sync(team_id, user_id)
         TeamMemberRepository.delete_sync(team_id, user_id)
+        InviteRepository.revoke_created_by_sync(team_id, user_id)
         # TODO(CHAT-172): publish team.member.changed (removed) after commit.
 
     @staticmethod
@@ -248,6 +251,24 @@ class TeamService:
         if user_id in owner_ids and len(owner_ids) == 1:
             raise Conflict(ErrorCode.LAST_OWNER)
         TeamService._remove_member_sync(team_id, user_id)
+
+    @staticmethod
+    async def hand_off_ownership(user_id: UUID) -> None:
+        """Call after a user is deactivated, so none of their teams is left without an active
+        owner."""
+        await sync_to_async(TeamService._hand_off_ownership_sync)(user_id)
+
+    @staticmethod
+    @transaction.atomic
+    def _hand_off_ownership_sync(user_id: UUID) -> None:
+        """In each team the user owns that has no active owner left, the admin who joined first
+        becomes owner, or else the member who joined first. The user keeps their own role."""
+        for team_id in TeamMemberRepository.list_owned_team_ids_sync(user_id):
+            TeamRepository.lock_sync(team_id)
+            first = TeamMemberRepository.first_active_by_rank_sync(team_id)
+            if first is not None and first.role != TeamMember.Role.OWNER:
+                TeamMemberRepository.update_role_sync(first, TeamMember.Role.OWNER)
+                # TODO(CHAT-172): publish team.member.changed (role_changed) after commit
 
 
 class InviteService:
