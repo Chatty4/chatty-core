@@ -1,6 +1,6 @@
 # chatty-core
 
-Django service for Chatty: users, auth, teams, invites and channels today; DMs and files next.
+Django service for Chatty: users, auth, teams, invites, channels and DMs today; files next.
 Python 3.14 · Django 6.1 · DRF (async) · Postgres 17 · Redis · uvicorn.
 
 Contracts live in `chatty-infra/docs`: `api-core.md` (public), `api-internal.md` (`/internal`).
@@ -69,22 +69,23 @@ Exact requests, responses and errors: `chatty-infra/docs/api-core.md`.
 | `GET invites/{invite_code}` | No token: the invite page, which team and whether the link still works (30 per minute per IP) |
 | `POST invites/{invite_code}/join` | Join the team as `member` and its default channels; 200 if already in it |
 
-**Channels** (all 🔒)
+**Channels and DMs** (all 🔒)
 
 | Endpoint | What it does |
 |---|---|
 | `GET teams/{team_id}/channels` | My sidebar: channels and DMs I'm in |
 | `GET teams/{team_id}/channels/browse` | Public channels I haven't joined, searchable and paginated |
 | `POST teams/{team_id}/channels` | Create a public or private channel (I become owner) |
+| `POST teams/{team_id}/dms` | Open a DM with 1 to 7 team members; returns the existing one if it has exactly these people |
 | `GET channels/{channel_id}` | Channel details and my settings in it |
+| `PUT channels/{channel_id}/me` | My settings in a channel: notification level, muted, hidden |
 | `PUT channels/{channel_id}` | Rename or change the topic (channel owner, team owner or admin) |
 | `POST channels/{channel_id}/archive` | Make it read-only; `general` can't be archived |
 | `POST channels/{channel_id}/join` / `leave` | Join a public channel / leave one; the last owner of a private channel hands it to the member who joined first |
 | `GET` / `POST channels/{channel_id}/members` | List members (paginated) / add up to 50 team members |
 | `DELETE channels/{channel_id}/members/{user_id}` | Remove someone (channel owner, team owner or admin) |
 
-Not built yet: DMs, channel settings (`PUT channels/{channel_id}/me`), files, `/internal`, and Redis
-events (`core.events`).
+Not built yet: files, `/internal`, and Redis events (`core.events`).
 
 ## Daily commands
 
