@@ -210,9 +210,7 @@ class ChannelService:
         # TODO(CHAT-172): publish membership.changed (settings) after commit.
         access = await ChannelService.require_access(channel_id, user_id, "member")
         member = access.channel_member
-
-        if member is None:
-            raise PermissionDenied(ErrorCode.NOT_A_MEMBER)
+        assert member is not None  # require_access("member") raised otherwise
 
         if hidden and access.channel.kind != Channel.Kind.DM:
             raise ValidationFailed(fields={"hidden": "invalid"})
