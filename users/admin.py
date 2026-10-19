@@ -34,6 +34,9 @@ class UserAdmin(BaseUserAdmin):
     readonly_fields = ["is_active"]
     actions = ["deactivate"]
 
+    def has_delete_permission(self, request, obj=None):
+        return False  # deletes cascade through memberships; use the deactivate action
+
     @admin.action(description="Deactivate selected users")
     def deactivate(self, request, queryset):
         user_ids = list(queryset.values_list("id", flat=True))
