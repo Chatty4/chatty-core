@@ -1,10 +1,16 @@
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 
-from shared.redis import clear_rate_limit, get_redis_client, rate_limit
+from shared.redis import clear_rate_limit, get_redis_client, is_rate_limited, rate_limit
 
 KEY = "test:rl"
 LIMIT = 3
 WINDOW = 60
+
+
+class DownRedis:
+    def __getattr__(self, name):
+        raise RedisConnectionError("redis down")
 
 
 @pytest.fixture(autouse=True)
@@ -64,3 +70,12 @@ async def test_independent_keys_do_not_share_counters():
         assert await rate_limit(other, LIMIT, WINDOW) == 0
     finally:
         await clear_rate_limit(other)
+
+
+@pytest.mark.parametrize(
+    "check",
+    [lambda: rate_limit(KEY, LIMIT, WINDOW), lambda: is_rate_limited(KEY, LIMIT)],
+)
+async def test_fails_open_when_redis_is_down(monkeypatch, check):
+    monkeypatch.setattr("shared.redis.get_redis_client", lambda: DownRedis())
+    assert await check() == 0

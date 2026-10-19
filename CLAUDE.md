@@ -48,7 +48,7 @@ authn/                  refresh token model, RS256 JWT issuance, rotation and re
   authentication.py     JWTAuthentication: Bearer JWT for /api/core/v1
   models.py             RefreshToken (stores SHA-256 hash only, never the raw token)
   repository.py         async ORM queries for refresh tokens
-  schemas.py            TokenPairSchema (Pydantic) returned by AuthnService
+  schemas.py            TokenPairSchema (dataclass) returned by AuthnService
   services.py           AuthnService: issue_tokens, refresh_tokens, revoke_*
   migrations/
 <app>/                  users, teams, channels, files, ...
@@ -86,7 +86,9 @@ Calls go one way only: `views -> services -> repositories -> models`.
   `select_related` / `prefetch_related` here so services never cause N+1 queries.
 - **internal/**: same rules as public views, but authenticated with `X-Service-Token` and never mounted
   under `/api/core/v1`.
-- Another app's code is reached through its **services**, never its repositories or models' managers.
+- Prefer another app's **services**. Call its repositories directly only from sync code
+  (inside `transaction.atomic`, authentication) or for a read no service offers. Use another
+  app's model manager only to lock a row (`select_for_update`).
 - `shared/` never imports from domain apps.
 
 ## Async rules

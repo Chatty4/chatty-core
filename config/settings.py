@@ -98,12 +98,12 @@ DATABASES = {
 
 REDIS_URL = env("REDIS_URL")
 # True only when every request comes through our Nginx, which sets X-Real-IP (D-09).
-BEHIND_PROXY = env.bool("BEHIND_PROXY", default=False)
+BEHIND_PROXY = env.bool("BEHIND_PROXY", default=not DEBUG)
 JWT_PRIVATE_KEY_PATH = env("JWT_PRIVATE_KEY_PATH")
 JWT_PUBLIC_KEY_PATH = env("JWT_PUBLIC_KEY_PATH")
 JWT_ACCESS_TOKEN_LIFETIME = 900  # 15 min
 JWT_REFRESH_TOKEN_LIFETIME = 2592000  # 30 days
-APP_URL = env.str("APP_URL", default="http://127.0.0.1:3000")
+APP_URL = env.str("APP_URL", default="http://127.0.0.1:5173")
 
 
 # Password validation
@@ -159,6 +159,9 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "authn.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
     ],
 }
 

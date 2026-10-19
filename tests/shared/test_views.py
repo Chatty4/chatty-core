@@ -38,3 +38,8 @@ async def test_unhandled_error_does_not_leak_details(async_client):
     assert response.status_code == 500
     assert "secret detail" not in response.content.decode()
     assert response.json()["error"]["code"] == "internal_error"
+
+
+async def test_async_api_view_requires_login_by_default(async_client):
+    response = await async_client.get("/private")
+    assert response.status_code == 401

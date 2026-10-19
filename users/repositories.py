@@ -49,6 +49,6 @@ class UserRepository:
         return user
 
     @staticmethod
-    async def set_password(user: User, password: str) -> None:
-        await sync_to_async(user.set_password, thread_sensitive=False)(password)
-        await user.asave(update_fields=["password"])
+    def set_password_sync(user: User, hashed: str) -> None:
+        user.password = hashed
+        user.save(update_fields=["password"])

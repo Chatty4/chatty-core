@@ -25,17 +25,17 @@ class ChannelService:
         read:   cannot_read_channel
         member: not_a_member
         write:  not_a_member, or channel_archived
-        manage: not_allowed_for_dm for a DM, else forbidden
+        manage: forbidden outside the team, not_allowed_for_dm for a DM, else forbidden
         A missing channel, or one whose team was deleted, is channel_not_found.
         """
         channel = await ChannelRepository.get_with_team(channel_id)
         if channel is None:
             raise NotFound(ErrorCode.CHANNEL_NOT_FOUND)
-        if need == "manage" and channel.kind == Channel.Kind.DM:
-            raise BadRequest(ErrorCode.NOT_ALLOWED_FOR_DM)
         team_member = await TeamMemberRepository.get_member(channel.team.id, user_id)
         channel_member = await ChannelMemberRepository.get_member(channel_id, user_id)
 
+        if need == "manage" and channel.kind == Channel.Kind.DM and team_member is not None:
+            raise BadRequest(ErrorCode.NOT_ALLOWED_FOR_DM)
         if need == "read" and not access.can_read(channel, team_member, channel_member):
             raise PermissionDenied(ErrorCode.CANNOT_READ_CHANNEL)
         if need in ("member", "write") and not access.is_member(team_member, channel_member):
@@ -164,9 +164,9 @@ class ChannelService:
 
     @staticmethod
     async def remove_member(channel_id: UUID, user_id: UUID, target_id: UUID) -> None:
+        access = await ChannelService.require_access(channel_id, user_id, "manage")
         if target_id == user_id:
             raise Conflict(ErrorCode.USE_LEAVE)
-        access = await ChannelService.require_access(channel_id, user_id, "manage")
         if await ChannelMemberRepository.get_member(channel_id, target_id) is None:
             raise NotFound(ErrorCode.MEMBER_NOT_FOUND)
         # same as leave: removing the last owner of a private channel hands it off too

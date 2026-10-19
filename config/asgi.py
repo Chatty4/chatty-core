@@ -28,8 +28,12 @@ async def _handle_lifespan(receive: Any, send: Any) -> None:
                 return
             await send({"type": "lifespan.startup.complete"})
         elif event["type"] == "lifespan.shutdown":
+            from asgiref.sync import sync_to_async
+            from django.db import connection
+
             from shared.redis import close_redis_client
 
             await close_redis_client()
+            await sync_to_async(connection.close_pool)()  # type: ignore[attr-defined]  # Postgres backend only
             await send({"type": "lifespan.shutdown.complete"})
             return

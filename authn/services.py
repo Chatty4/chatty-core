@@ -11,7 +11,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from authn.repository import RefreshTokenRepository
+from authn.repositories import RefreshTokenRepository
 from authn.schemas import TokenPairSchema
 from shared.codes import ErrorCode
 from shared.exceptions import PermissionDenied, Unauthorized, UserInactive
@@ -106,11 +106,19 @@ class AuthnService:
         keep_hash = _hash_token(keep_raw_token) if keep_raw_token else None
         await RefreshTokenRepository.delete_all_for_user(user_id, except_hash=keep_hash)
 
+    def revoke_all_tokens_sync(self, user_id: str, keep_raw_token: str) -> None:
+        """revoke_all_tokens for use inside the caller's transaction.atomic."""
+        RefreshTokenRepository.delete_all_for_user_sync(
+            user_id, except_hash=_hash_token(keep_raw_token)
+        )
+
     @staticmethod
     def decode_access_token(token: str) -> dict:
         """Decode and verify an RS256 access token. Raises Unauthorized on failure."""
         try:
-            return jwt.decode(token, _public_key(), algorithms=["RS256"])
+            return jwt.decode(
+                token, _public_key(), algorithms=["RS256"], options={"require": ["exp", "sub"]}
+            )
         except jwt.ExpiredSignatureError:
             raise Unauthorized(ErrorCode.UNAUTHORIZED, "token expired")
         except jwt.InvalidTokenError:

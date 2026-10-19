@@ -51,6 +51,13 @@ class RefreshTokenRepository:
         await tokens.adelete()
 
     @staticmethod
+    def delete_all_for_user_sync(user_id: str, except_hash: str | None = None) -> None:
+        tokens = RefreshToken.objects.filter(user_id=user_id)
+        if except_hash:
+            tokens = tokens.exclude(token_hash=except_hash)
+        tokens.delete()
+
+    @staticmethod
     def _stale_qs(cutoff: datetime):
         return RefreshToken.objects.filter(Q(expires_at__lt=cutoff) | Q(revoked_at__lt=cutoff))
 

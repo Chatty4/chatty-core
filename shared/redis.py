@@ -20,14 +20,18 @@ async def close_redis_client() -> None:
 
 
 async def rate_limit(key: str, limit: int, window: int) -> int:
-    """Returns seconds until reset if blocked, 0 if allowed."""
-    redis = get_redis_client()
-    async with redis.pipeline(transaction=False) as pipe:
-        await pipe.incr(key)
-        await pipe.expire(key, window, nx=True)
-        count, _ = await pipe.execute()
-    if count > limit:
-        return max(await redis.ttl(key), 1)
+    """Returns seconds until reset if blocked, 0 if allowed. Fails open if Redis is down."""
+    try:
+        redis = get_redis_client()
+        async with redis.pipeline(transaction=False) as pipe:
+            await pipe.incr(key)
+            await pipe.expire(key, window, nx=True)
+            count, _ = await pipe.execute()
+        if count > limit:
+            return max(await redis.ttl(key), 1)
+    except RedisError:
+        # error, not warning: requests are now let through without a rate limit
+        logger.error("Rate limit check failed for %s, allowing request", key)
     return 0
 
 
@@ -49,9 +53,13 @@ async def undo_rate_limit(key: str) -> None:
 
 
 async def is_rate_limited(key: str, limit: int) -> int:
-    """Returns seconds until reset if currently over limit, 0 otherwise. Does not increment."""
-    redis = get_redis_client()
-    count_str = await redis.get(key)
-    if count_str and int(count_str) >= limit:
-        return max(await redis.ttl(key), 1)
+    """Returns seconds until reset if currently over limit, 0 otherwise. Does not increment.
+    Fails open if Redis is down."""
+    try:
+        redis = get_redis_client()
+        count_str = await redis.get(key)
+        if count_str and int(count_str) >= limit:
+            return max(await redis.ttl(key), 1)
+    except RedisError:
+        logger.error("Rate limit check failed for %s, allowing request", key)
     return 0

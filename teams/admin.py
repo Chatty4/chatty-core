@@ -8,7 +8,10 @@ class TeamAdmin(admin.ModelAdmin):
     list_display = ["name", "created_by", "created_at", "deleted_at"]
     list_filter = ["deleted_at"]
     search_fields = ["name"]
-    readonly_fields = ["id", "created_at"]
+    readonly_fields = ["id", "created_at", "deleted_at"]
+
+    def has_delete_permission(self, request, obj=None):
+        return False  # teams are soft-deleted by TeamService.delete; a hard delete cascades
 
 
 @admin.register(TeamMember)
@@ -18,6 +21,16 @@ class TeamMemberAdmin(admin.ModelAdmin):
     search_fields = ["user__email", "team__name"]
     readonly_fields = ["id", "joined_at"]
 
+    # view only: role and membership changes go through TeamService (last-owner rule)
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 @admin.register(Invite)
 class InviteAdmin(admin.ModelAdmin):
@@ -25,3 +38,6 @@ class InviteAdmin(admin.ModelAdmin):
     list_filter = ["revoked_at"]
     search_fields = ["code", "team__name"]
     readonly_fields = ["id", "created_at"]
+
+    def has_delete_permission(self, request, obj=None):
+        return False  # invites are revoked (revoked_at), never deleted

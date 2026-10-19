@@ -46,13 +46,13 @@ class TeamService:
 
     @staticmethod
     async def create(name: str, user_id: UUID) -> CreateTeamResult:
-        if await TeamRepository.count_created_by(user_id) >= 10:
-            raise Conflict(ErrorCode.TEAM_LIMIT_REACHED)
         return await sync_to_async(TeamService._create_sync)(name, user_id)
 
     @staticmethod
     @transaction.atomic
     def _create_sync(name: str, user_id: UUID) -> CreateTeamResult:
+        if TeamRepository.count_created_by_sync(user_id) >= 10:
+            raise Conflict(ErrorCode.TEAM_LIMIT_REACHED)
         team = TeamRepository.create_sync(name, created_by_id=user_id)
         TeamMemberRepository.create_sync(team=team, user_id=user_id, role=TeamMember.Role.OWNER)
         channel = ChannelRepository.create_sync(
@@ -115,20 +115,11 @@ class TeamService:
         TODO: validate icon_file_id against the files model (ready,
         team_icon purpose, same team).
         """
-        team, member = await TeamService.require_member(
+        team, _ = await TeamService.require_member(
             team_id, user_id, roles={TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
         )
         team = await TeamRepository.update(team, name=name, icon_id=icon_file_id)
-        count = await TeamMemberRepository.count_members(team_id)
-        return TeamDetailResult(
-            id=team.id,
-            name=team.name,
-            icon_file_id=team.icon_id,
-            my_role=member.role,
-            member_count=count,
-            created_by=team.created_by_id,  # type: ignore[attr-defined]
-            created_at=team.created_at,
-        )
+        return await TeamService.get(team_id, user_id)
 
     @staticmethod
     async def delete(team_id: UUID, user_id: UUID) -> None:
@@ -268,6 +259,13 @@ class InviteService:
         return invite
 
     @staticmethod
+    async def _limit_code_guesses(ip: str) -> None:
+        """Lookup and join share one budget, so neither can be used to guess codes."""
+        retry_after = await rate_limit(f"invite_lookup:{ip}", LOOKUP_LIMIT, LOOKUP_WINDOW)
+        if retry_after:
+            raise RateLimited(retry_after)
+
+    @staticmethod
     async def create(team_id: UUID, user_id: UUID, max_age: int, max_uses: int) -> InviteResult:
         await TeamService.require_member(team_id, user_id)
         return await sync_to_async(InviteService._create_sync)(team_id, user_id, max_age, max_uses)
@@ -352,9 +350,7 @@ class InviteService:
     @staticmethod
     async def lookup(code: str, ip: str) -> InviteLookupResult:
         """Public invite preview. Rate limited 30/min per IP"""
-        retry_after = await rate_limit(f"invite_lookup:{ip}", LOOKUP_LIMIT, LOOKUP_WINDOW)
-        if retry_after:
-            raise RateLimited(retry_after)
+        await InviteService._limit_code_guesses(ip)
 
         invite = await InviteService._get_invite_or_404(code)
 
@@ -371,8 +367,9 @@ class InviteService:
         )
 
     @staticmethod
-    async def join(code: str, user_id: UUID) -> JoinTeamResult:
+    async def join(code: str, user_id: UUID, ip: str) -> JoinTeamResult:
         """Join the team with an invite. Already a member: nothing changes and uses don't go up."""
+        await InviteService._limit_code_guesses(ip)
         invite = await InviteService._get_invite_or_404(code)
         return await sync_to_async(InviteService._join_sync)(invite.id, invite.team, user_id)
 
@@ -383,7 +380,8 @@ class InviteService:
         Lock the team so concurrent joins (same or different invite) run one at a time,
         then add the user to the team and its default channels.
         """
-        TeamRepository.lock_sync(team.id)
+        if not TeamRepository.lock_sync(team.id):
+            raise NotFound(ErrorCode.INVITE_NOT_FOUND)  # the team was deleted after the lookup
         invite = InviteRepository.lock_by_id_sync(invite_id)
 
         member = TeamMemberRepository.get_member_sync(team.id, user_id)

@@ -1,8 +1,10 @@
+from dataclasses import asdict
+
 from rest_framework.response import Response
 
 from shared.http import client_ip
 from shared.serializers import validated
-from shared.views import AsyncAPIView, UserAPIView
+from shared.views import AsyncAPIView
 from users.serializers import (
     ChangePasswordRequest,
     LoginRequest,
@@ -19,6 +21,7 @@ from users.services import UserService
 
 class RegisterView(AsyncAPIView):
     authentication_classes = []
+    permission_classes = []
 
     async def post(self, request):
         data = validated(RegisterRequest, request.data)
@@ -28,15 +31,17 @@ class RegisterView(AsyncAPIView):
 
 class LoginView(AsyncAPIView):
     authentication_classes = []
+    permission_classes = []
 
     async def post(self, request):
         data = validated(LoginRequest, request.data)
         tokens, user = await UserService.login(**data, ip=client_ip(request))
-        return Response(LoginResponse({"user": user, **tokens.model_dump()}).data)
+        return Response(LoginResponse({"user": user, **asdict(tokens)}).data)
 
 
 class RefreshTokenView(AsyncAPIView):
     authentication_classes = []
+    permission_classes = []
 
     async def post(self, request):
         data = validated(TokenRequest, request.data)
@@ -44,14 +49,14 @@ class RefreshTokenView(AsyncAPIView):
         return Response(TokenPairResponse(tokens).data)
 
 
-class LogoutView(UserAPIView):
+class LogoutView(AsyncAPIView):
     async def post(self, request):
         data = validated(TokenRequest, request.data)
         await UserService.logout(**data, user_id=request.user.id)
         return Response(status=204)
 
 
-class MeView(UserAPIView):
+class MeView(AsyncAPIView):
     async def get(self, request):
         me = await UserService.get_me(request.user)
         return Response(MeResponse(me.user, context={"teams": me.teams}).data)
@@ -63,7 +68,7 @@ class MeView(UserAPIView):
         return Response(MeResponse(me.user, context={"teams": me.teams}).data)
 
 
-class ChangePasswordView(UserAPIView):
+class ChangePasswordView(AsyncAPIView):
     async def post(self, request):
         data = validated(ChangePasswordRequest, request.data, context={"user": request.user})
         await UserService.change_password(request.user, **data)

@@ -159,3 +159,32 @@ async def test_expired_refresh_token(async_client, user, this_device, other_devi
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "invalid_refresh_token"
     assert await password_is_old(user)
+
+
+async def test_failed_save_keeps_other_sessions(
+    async_client, user, this_device, other_device, monkeypatch
+):
+    def boom(*args):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr("users.repositories.UserRepository.set_password_sync", boom)
+
+    response = await change(async_client, this_device)
+
+    assert response.status_code == 500
+    assert await password_is_old(user)
+    assert not await is_logged_out(other_device.refresh_token)
+
+
+async def test_bad_refresh_token_with_right_password_is_not_a_failed_attempt(
+    async_client, user, this_device
+):
+    good = this_device.refresh_token
+    this_device.refresh_token = "rt_garbage"
+    for _ in range(5):
+        await change(async_client, this_device)
+
+    this_device.refresh_token = good
+    response = await change(async_client, this_device)
+
+    assert response.status_code == 204

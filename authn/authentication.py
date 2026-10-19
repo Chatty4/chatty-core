@@ -21,8 +21,6 @@ class JWTAuthentication(BaseAuthentication):
 
         try:
             user_id = uuid.UUID(payload["sub"])
-        except KeyError:
-            raise Unauthorized(ErrorCode.UNAUTHORIZED, "invalid token")
         except ValueError:
             raise Unauthorized(ErrorCode.UNAUTHORIZED, "invalid token")
 
