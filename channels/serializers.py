@@ -102,3 +102,15 @@ class UpdateMySettingsRequest(serializers.Serializer):
     notify_level = serializers.ChoiceField(choices=ChannelMember.NotifyLevel.choices)
     muted = serializers.BooleanField()
     hidden = serializers.BooleanField()
+
+
+class OpenDMRequest(AddChannelMemberRequest):
+    """The other people, without me. Duplicates and my own id are dropped by the service."""
+
+
+class DMResponse(serializers.Serializer):
+    id = serializers.UUIDField(source="channel.id")
+    team_id = serializers.UUIDField(source="channel.team_id")
+    kind = serializers.CharField(source="channel.kind")
+    member_ids = serializers.ListField(child=serializers.UUIDField())
+    created_at = serializers.DateTimeField(source="channel.created_at")

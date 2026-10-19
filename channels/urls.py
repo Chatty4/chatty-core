@@ -10,6 +10,7 @@ from channels.views import (
     LeaveChannelView,
     MyChannelSettingsView,
     TeamChannelsView,
+    TeamDMsView,
 )
 
 urlpatterns = [
@@ -29,6 +30,7 @@ urlpatterns = [
         name="channel-member-detail",
     ),
     path("teams/<uuid:team_id>/channels", TeamChannelsView.as_view(), name="team-channels"),
+    path("teams/<uuid:team_id>/dms", TeamDMsView.as_view(), name="team-dms"),
     path(
         "teams/<uuid:team_id>/channels/browse",
         BrowseChannelsView.as_view(),
