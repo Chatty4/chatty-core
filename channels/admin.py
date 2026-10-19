@@ -10,6 +10,9 @@ class ChannelAdmin(admin.ModelAdmin):
     search_fields = ["name", "team__name"]
     readonly_fields = ["id", "created_at"]
 
+    def has_delete_permission(self, request, obj=None):
+        return False  # channels are archived by ChannelService.archive; a hard delete cascades
+
 
 @admin.register(ChannelMember)
 class ChannelMemberAdmin(admin.ModelAdmin):

@@ -1,8 +1,8 @@
 import pytest
 from django.contrib import admin
 
-from channels.models import ChannelMember
-from teams.models import TeamMember
+from channels.models import Channel, ChannelMember
+from teams.models import Invite, Team, TeamMember
 from users.models import User
 
 pytestmark = pytest.mark.django_db
@@ -28,3 +28,8 @@ def test_memberships_are_view_only(request_as_staff, model):
     assert not model_admin.has_add_permission(request_as_staff)
     assert not model_admin.has_change_permission(request_as_staff)
     assert not model_admin.has_delete_permission(request_as_staff)
+
+
+@pytest.mark.parametrize("model", [Team, Channel, Invite])
+def test_staff_cannot_hard_delete(request_as_staff, model):
+    assert not admin.site._registry[model].has_delete_permission(request_as_staff)

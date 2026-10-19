@@ -10,6 +10,9 @@ class TeamAdmin(admin.ModelAdmin):
     search_fields = ["name"]
     readonly_fields = ["id", "created_at"]
 
+    def has_delete_permission(self, request, obj=None):
+        return False  # teams are soft-deleted by TeamService.delete; a hard delete cascades
+
 
 @admin.register(TeamMember)
 class TeamMemberAdmin(admin.ModelAdmin):
@@ -35,3 +38,6 @@ class InviteAdmin(admin.ModelAdmin):
     list_filter = ["revoked_at"]
     search_fields = ["code", "team__name"]
     readonly_fields = ["id", "created_at"]
+
+    def has_delete_permission(self, request, obj=None):
+        return False  # invites are revoked (revoked_at), never deleted
