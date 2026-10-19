@@ -1,7 +1,8 @@
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
-from django.db import IntegrityError
+from django.contrib.auth.hashers import make_password
+from django.db import IntegrityError, transaction
 
 from authn.schemas import TokenPairSchema
 from authn.services import AuthnService
@@ -102,6 +103,12 @@ class UserService:
         return await UserService.get_me(user)
 
     @staticmethod
+    @transaction.atomic
+    def _revoke_and_set_password_sync(user: User, hashed: str, keep_raw_token: str) -> None:
+        AuthnService().revoke_all_tokens_sync(str(user.id), keep_raw_token)
+        UserRepository.set_password_sync(user, hashed)
+
+    @staticmethod
     async def change_password(
         user: User, old_password: str, new_password: str, refresh_token: str
     ) -> None:
@@ -117,7 +124,7 @@ class UserService:
                 raise RateLimited(retry_after)
             raise BadRequest(ErrorCode.WRONG_PASSWORD)
 
-        await AuthnService().check_own_refresh_token(refresh_token, str(user.id))
         await clear_rate_limit(key)
-        await AuthnService().revoke_all_tokens(str(user.id), keep_raw_token=refresh_token)
-        await UserRepository.set_password(user, new_password)
+        await AuthnService().check_own_refresh_token(refresh_token, str(user.id))
+        hashed = await sync_to_async(make_password, thread_sensitive=False)(new_password)
+        await sync_to_async(UserService._revoke_and_set_password_sync)(user, hashed, refresh_token)
