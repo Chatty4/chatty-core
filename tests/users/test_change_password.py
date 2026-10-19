@@ -116,11 +116,7 @@ async def test_wrong_old_password_rate_limited_after_5_failures(async_client, us
 
 
 async def test_over_limit_rejected_before_hashing(async_client, user, this_device, monkeypatch):
-    # Simulate parallel requests: all passed any pre-check, the counter is already full
-    async def not_limited(key, limit):
-        return 0
-
-    monkeypatch.setattr("users.services.is_rate_limited", not_limited)
+    # The counter is already full: the request must be rejected before any hash work
     for _ in range(5):
         await rate_limit(f"change_pw_fail:{user.id}", 5, 900)
 

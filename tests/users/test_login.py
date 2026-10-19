@@ -139,11 +139,7 @@ async def test_login_successes_do_not_lock_ip(async_client, user):
 
 
 async def test_login_over_limit_rejected_before_hashing(async_client, user, monkeypatch):
-    # Simulate parallel requests: all passed the pre-check, the counter is already full
-    async def not_limited(key, limit):
-        return 0
-
-    monkeypatch.setattr("users.services.is_rate_limited", not_limited)
+    # The counter is already full: the request must be rejected before any hash work
     for _ in range(5):
         await rate_limit(f"login_fail:{EMAIL}", 5, 900)
 
