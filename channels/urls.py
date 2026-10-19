@@ -8,6 +8,7 @@ from channels.views import (
     ChannelMembersView,
     JoinChannelView,
     LeaveChannelView,
+    MyChannelSettingsView,
     TeamChannelsView,
 )
 
@@ -15,6 +16,7 @@ urlpatterns = [
     path("channels/<uuid:channel_id>", ChannelDetailView.as_view(), name="channel-detail"),
     path("channels/<uuid:channel_id>/join", JoinChannelView.as_view(), name="channel-join"),
     path("channels/<uuid:channel_id>/leave", LeaveChannelView.as_view(), name="channel-leave"),
+    path("channels/<uuid:channel_id>/me", MyChannelSettingsView.as_view(), name="channel-me"),
     path(
         "channels/<uuid:channel_id>/archive", ArchiveChannelView.as_view(), name="channel-archive"
     ),

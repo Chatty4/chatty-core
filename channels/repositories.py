@@ -206,3 +206,14 @@ class ChannelMemberRepository:
                 for channel_id in channel_ids
             ]
         )
+
+    @staticmethod
+    async def update_settings(
+        member: ChannelMember, notify_level: str, muted: bool, hidden: bool
+    ) -> ChannelMember:
+        """Update channel settings for member."""
+        member.notify_level = notify_level
+        member.muted = muted
+        member.hidden = hidden
+        await member.asave(update_fields=["notify_level", "muted", "hidden"])
+        return member

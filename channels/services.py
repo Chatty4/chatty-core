@@ -9,7 +9,7 @@ from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
 from channels.schemas import ChannelAccess, ChannelDetail, MyChannel
 from shared.codes import ErrorCode
-from shared.exceptions import BadRequest, Conflict, NotFound, PermissionDenied
+from shared.exceptions import BadRequest, Conflict, NotFound, PermissionDenied, ValidationFailed
 from teams.models import Team
 from teams.repositories import TeamMemberRepository
 from teams.services import TeamService
@@ -201,3 +201,20 @@ class ChannelService:
             # TODO(CHAT-172): publish channel.updated (archived: true) after commit
         member_count = await ChannelMemberRepository.count(channel_id)
         return ChannelDetail(channel, member_count, access.channel_member)
+
+    @staticmethod
+    async def update_my_settings(
+        channel_id: UUID, user_id: UUID, notify_level: str, muted: bool, hidden: bool
+    ) -> ChannelMember:
+        """My notification settings for a channel. Hidden is only for DMs."""
+        # TODO(CHAT-172): publish membership.changed (settings) after commit.
+        access = await ChannelService.require_access(channel_id, user_id, "member")
+        member = access.channel_member
+
+        if member is None:
+            raise PermissionDenied(ErrorCode.NOT_A_MEMBER)
+
+        if hidden and access.channel.kind != Channel.Kind.DM:
+            raise ValidationFailed(fields={"hidden": "invalid"})
+
+        return await ChannelMemberRepository.update_settings(member, notify_level, muted, hidden)
