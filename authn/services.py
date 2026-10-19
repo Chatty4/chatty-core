@@ -116,7 +116,9 @@ class AuthnService:
     def decode_access_token(token: str) -> dict:
         """Decode and verify an RS256 access token. Raises Unauthorized on failure."""
         try:
-            return jwt.decode(token, _public_key(), algorithms=["RS256"])
+            return jwt.decode(
+                token, _public_key(), algorithms=["RS256"], options={"require": ["exp", "sub"]}
+            )
         except jwt.ExpiredSignatureError:
             raise Unauthorized(ErrorCode.UNAUTHORIZED, "token expired")
         except jwt.InvalidTokenError:
