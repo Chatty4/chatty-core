@@ -46,13 +46,13 @@ class TeamService:
 
     @staticmethod
     async def create(name: str, user_id: UUID) -> CreateTeamResult:
-        if await TeamRepository.count_created_by(user_id) >= 10:
-            raise Conflict(ErrorCode.TEAM_LIMIT_REACHED)
         return await sync_to_async(TeamService._create_sync)(name, user_id)
 
     @staticmethod
     @transaction.atomic
     def _create_sync(name: str, user_id: UUID) -> CreateTeamResult:
+        if TeamRepository.count_created_by_sync(user_id) >= 10:
+            raise Conflict(ErrorCode.TEAM_LIMIT_REACHED)
         team = TeamRepository.create_sync(name, created_by_id=user_id)
         TeamMemberRepository.create_sync(team=team, user_id=user_id, role=TeamMember.Role.OWNER)
         channel = ChannelRepository.create_sync(

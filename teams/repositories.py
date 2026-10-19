@@ -1,6 +1,7 @@
 from datetime import timedelta
 from uuid import UUID
 
+from django.contrib.auth import get_user_model
 from django.db.models import Count, F, IntegerField, OuterRef, Q, QuerySet, Subquery
 from django.utils import timezone
 
@@ -15,9 +16,12 @@ class TeamRepository:
         return await Team.objects.filter(id=team_id, deleted_at__isnull=True).afirst()
 
     @staticmethod
-    async def count_created_by(user_id: UUID) -> int:
-        """Count non-deleted teams created by this user."""
-        return await Team.objects.filter(created_by_id=user_id, deleted_at__isnull=True).acount()
+    def count_created_by_sync(user_id: UUID) -> int:
+        """Count non-deleted teams created by this user. Locks the user row until the
+        transaction ends, so two parallel creates can't both pass the 10-team check."""
+        # no_key: other inserts that reference this user (logins, joins) don't wait
+        get_user_model().objects.select_for_update(no_key=True).get(id=user_id)
+        return Team.objects.filter(created_by_id=user_id, deleted_at__isnull=True).count()
 
     @staticmethod
     def create_sync(name: str, created_by_id: UUID) -> Team:
