@@ -141,8 +141,8 @@ class TeamMemberRepository:
 class InviteRepository:
     @staticmethod
     async def get_by_id(invite_id: UUID) -> Invite | None:
-        """Return an invite by id, or None."""
-        return await Invite.objects.filter(id=invite_id).afirst()
+        """Return an invite by id, or None if not found or its team is deleted."""
+        return await Invite.objects.filter(id=invite_id, team__deleted_at__isnull=True).afirst()
 
     @staticmethod
     async def get_by_code(code: str) -> Invite | None:

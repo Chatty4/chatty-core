@@ -47,7 +47,7 @@ shared/                 code used by more than one app, no business rules
 authn/                  refresh token model, RS256 JWT issuance, rotation and revocation
   authentication.py     JWTAuthentication: Bearer JWT for /api/core/v1
   models.py             RefreshToken (stores SHA-256 hash only, never the raw token)
-  repository.py         async ORM queries for refresh tokens
+  repositories.py       async ORM queries for refresh tokens
   schemas.py            TokenPairSchema (dataclass) returned by AuthnService
   services.py           AuthnService: issue_tokens, refresh_tokens, revoke_*
   migrations/

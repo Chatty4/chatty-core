@@ -96,16 +96,7 @@ class TeamService:
     @staticmethod
     async def get(team_id: UUID, user_id: UUID) -> TeamDetailResult:
         team, member = await TeamService.require_member(team_id, user_id)
-        count = await TeamMemberRepository.count_members(team_id)
-        return TeamDetailResult(
-            id=team.id,
-            name=team.name,
-            icon_file_id=team.icon_id,
-            my_role=member.role,
-            member_count=count,
-            created_by=team.created_by_id,  # type: ignore[attr-defined]
-            created_at=team.created_at,
-        )
+        return await TeamService._detail(team, member)
 
     @staticmethod
     async def update(
@@ -115,11 +106,25 @@ class TeamService:
         TODO: validate icon_file_id against the files model (ready,
         team_icon purpose, same team).
         """
-        team, _ = await TeamService.require_member(
+        team, member = await TeamService.require_member(
             team_id, user_id, roles={TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
         )
         team = await TeamRepository.update(team, name=name, icon_id=icon_file_id)
-        return await TeamService.get(team_id, user_id)
+        return await TeamService._detail(team, member)
+
+    @staticmethod
+    async def _detail(team: Team, member: TeamMember) -> TeamDetailResult:
+        """The team as GET /teams/{team_id} returns it, from rows already loaded."""
+        count = await TeamMemberRepository.count_members(team.id)
+        return TeamDetailResult(
+            id=team.id,
+            name=team.name,
+            icon_file_id=team.icon_id,
+            my_role=member.role,
+            member_count=count,
+            created_by=team.created_by_id,  # type: ignore[attr-defined]
+            created_at=team.created_at,
+        )
 
     @staticmethod
     async def delete(team_id: UUID, user_id: UUID) -> None:
