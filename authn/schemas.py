@@ -1,7 +1,8 @@
-from pydantic import BaseModel
+from dataclasses import dataclass
 
 
-class TokenPairSchema(BaseModel):
+@dataclass
+class TokenPairSchema:
     access_token: str
     token_type: str
     expires_in: int

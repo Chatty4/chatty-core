@@ -48,7 +48,7 @@ authn/                  refresh token model, RS256 JWT issuance, rotation and re
   authentication.py     JWTAuthentication: Bearer JWT for /api/core/v1
   models.py             RefreshToken (stores SHA-256 hash only, never the raw token)
   repository.py         async ORM queries for refresh tokens
-  schemas.py            TokenPairSchema (Pydantic) returned by AuthnService
+  schemas.py            TokenPairSchema (dataclass) returned by AuthnService
   services.py           AuthnService: issue_tokens, refresh_tokens, revoke_*
   migrations/
 <app>/                  users, teams, channels, files, ...
