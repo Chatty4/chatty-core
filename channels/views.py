@@ -100,14 +100,14 @@ class ArchiveChannelView(AsyncAPIView):
         return Response(ChannelDetailResponse(detail).data)
 
 
-class MyChannelSettingsView(UserAPIView):
+class MyChannelSettingsView(AsyncAPIView):
     async def put(self, request, channel_id: UUID):
         data = validated(UpdateMySettingsRequest, request.data)
         member = await ChannelService.update_my_settings(channel_id, request.user.id, **data)
         return Response(JoinChannelResponse(member).data)
 
 
-class TeamDMsView(UserAPIView):
+class TeamDMsView(AsyncAPIView):
     async def post(self, request, team_id: UUID):
         data = validated(OpenDMRequest, request.data)
         result = await ChannelService.open_dm(team_id, request.user.id, data["user_ids"])
