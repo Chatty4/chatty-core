@@ -206,6 +206,13 @@ class InviteRepository:
         await invite.asave(update_fields=["revoked_at"])
 
     @staticmethod
+    def revoke_created_by_sync(team_id: UUID, user_id: UUID) -> None:
+        """Revoke every invite this user created for the team that isn't revoked yet."""
+        Invite.objects.filter(
+            team_id=team_id, created_by_id=user_id, revoked_at__isnull=True
+        ).update(revoked_at=timezone.now())
+
+    @staticmethod
     def lock_by_id_sync(invite_id: UUID) -> Invite:
         """Lock the invite row until the transaction ends, and return it."""
         return Invite.objects.select_for_update().get(id=invite_id)

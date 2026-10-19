@@ -3,7 +3,7 @@ import uuid
 import pytest
 
 from channels.models import ChannelMember
-from teams.models import TeamMember
+from teams.models import Invite, TeamMember
 from teams.services import TeamService
 from tests.helpers import headers_for, make_user
 from users.models import User
@@ -69,6 +69,19 @@ async def test_other_teams_are_untouched(async_client, owner, team):
 
     assert await in_team(other_team, member)
     assert await in_channels(other_team, member)
+
+
+async def test_removed_members_invites_are_revoked(async_client, owner, team):
+    member = await join(team, MEMBER)
+    theirs = await Invite.objects.acreate(team_id=team.id, created_by=member, code="theirs01")
+    mine = await Invite.objects.acreate(team_id=team.id, created_by=owner, code="mine0001")
+
+    await remove(async_client, team, member, owner)
+
+    await theirs.arefresh_from_db()
+    await mine.arefresh_from_db()
+    assert theirs.revoked_at is not None
+    assert mine.revoked_at is None  # other people's links keep working
 
 
 async def test_admin_removes_member(async_client, team):
