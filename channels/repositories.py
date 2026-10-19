@@ -11,7 +11,13 @@ from teams.models import Team
 class ChannelRepository:
     @staticmethod
     def create_sync(
-        team: Team, name: str, kind: str, is_default: bool, created_by_id: UUID, topic: str = ""
+        team: Team,
+        name: str,
+        kind: str,
+        is_default: bool,
+        created_by_id: UUID,
+        topic: str = "",
+        dm_key: str = "",
     ) -> Channel:
         """Create and return a channel."""
         return Channel.objects.create(
@@ -21,6 +27,7 @@ class ChannelRepository:
             is_default=is_default,
             created_by_id=created_by_id,
             topic=topic,
+            dm_key=dm_key,
         )
 
     @staticmethod
@@ -67,6 +74,13 @@ class ChannelRepository:
                 team_id=team_id, is_default=True, archived_at__isnull=True
             ).values_list("id", flat=True)
         )
+
+    @staticmethod
+    async def find_dm(team_id: UUID, dm_key: str) -> Channel | None:
+        """The team's DM between exactly these people, or None."""
+        return await Channel.objects.filter(
+            team_id=team_id, kind=Channel.Kind.DM, dm_key=dm_key
+        ).afirst()
 
 
 class ChannelMemberRepository:
@@ -206,3 +220,14 @@ class ChannelMemberRepository:
                 for channel_id in channel_ids
             ]
         )
+
+    @staticmethod
+    async def update_settings(
+        member: ChannelMember, notify_level: str, muted: bool, hidden: bool
+    ) -> ChannelMember:
+        """Update channel settings for member."""
+        member.notify_level = notify_level
+        member.muted = muted
+        member.hidden = hidden
+        await member.asave(update_fields=["notify_level", "muted", "hidden"])
+        return member

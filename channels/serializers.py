@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from channels.models import Channel
+from channels.models import Channel, ChannelMember
 from channels.schemas import ChannelDetail, MyChannel
 from shared.pagination import PageQuery
 
@@ -96,3 +96,21 @@ class AddChannelMemberRequest(serializers.Serializer):
 class UpdateChannelRequest(serializers.Serializer):
     name = serializers.RegexField(r"^[a-z0-9_-]+$", max_length=80)
     topic = serializers.CharField(required=False, allow_blank=True, max_length=250)
+
+
+class UpdateMySettingsRequest(serializers.Serializer):
+    notify_level = serializers.ChoiceField(choices=ChannelMember.NotifyLevel.choices)
+    muted = serializers.BooleanField()
+    hidden = serializers.BooleanField()
+
+
+class OpenDMRequest(AddChannelMemberRequest):
+    """The other people, without me. Duplicates and my own id are dropped by the service."""
+
+
+class DMResponse(serializers.Serializer):
+    id = serializers.UUIDField(source="channel.id")
+    team_id = serializers.UUIDField(source="channel.team_id")
+    kind = serializers.CharField(source="channel.kind")
+    member_ids = serializers.ListField(child=serializers.UUIDField())
+    created_at = serializers.DateTimeField(source="channel.created_at")
