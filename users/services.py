@@ -113,15 +113,11 @@ class UserService:
         user: User, old_password: str, new_password: str, refresh_token: str
     ) -> None:
         key = f"change_pw_fail:{user.id}"
-        retry_after = await is_rate_limited(key, CHANGE_PW_FAIL_LIMIT)
+        retry_after = await rate_limit(key, CHANGE_PW_FAIL_LIMIT, CHANGE_PW_FAIL_WINDOW)
         if retry_after:
             raise RateLimited(retry_after)
 
-        retry_after = await rate_limit(key, CHANGE_PW_FAIL_LIMIT, CHANGE_PW_FAIL_WINDOW)
-
         if not await user.acheck_password(old_password):
-            if retry_after:
-                raise RateLimited(retry_after)
             raise BadRequest(ErrorCode.WRONG_PASSWORD)
 
         await clear_rate_limit(key)

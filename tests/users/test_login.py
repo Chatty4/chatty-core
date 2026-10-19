@@ -162,6 +162,16 @@ async def test_login_over_limit_rejected_before_hashing(async_client, user, monk
     assert hashed == []  # no hash work was done
 
 
+async def test_login_email_too_long(async_client):
+    long_email = "a" * 64 + "@" + "b" * 63 + "." + "c" * 63 + "." + "d" * 58 + ".com"
+
+    response = await login(async_client, {"email": long_email, "password": PASSWORD})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "validation_error"
+    assert response.json()["error"]["fields"] == {"email": "too_long"}
+
+
 async def test_login_ignores_bad_bearer(async_client, user):
     response = await async_client.post(
         URL,
