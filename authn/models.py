@@ -19,7 +19,6 @@ class RefreshToken(models.Model):
 
     class Meta:
         db_table = "authn_refresh_tokens"
-        indexes = [models.Index(fields=["user_id"])]
 
     def __str__(self) -> str:
         return f"RefreshToken({self.user_id}, expires={self.expires_at})"
