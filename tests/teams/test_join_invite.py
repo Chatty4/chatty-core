@@ -6,8 +6,11 @@ from django.utils import timezone
 
 from authn.services import AuthnService
 from channels.models import Channel, ChannelMember
+from shared.redis import clear_rate_limit, get_redis_client
 from teams.models import Invite, Team, TeamMember
 from users.models import User
+
+RATE_KEY = "invite_lookup:127.0.0.1"
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -57,6 +60,16 @@ async def invite(team, owner, general):
     return await Invite.objects.acreate(
         team=team, created_by=owner, code="joininv1", max_uses=0, uses=0
     )
+
+
+@pytest.fixture(autouse=True)
+async def redis_client():
+    get_redis_client.cache_clear()
+    await clear_rate_limit(RATE_KEY)
+    yield
+    await clear_rate_limit(RATE_KEY)
+    await get_redis_client().aclose()
+    get_redis_client.cache_clear()
 
 
 def url(code):
@@ -336,3 +349,16 @@ async def test_join_requires_auth(async_client, invite):
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "unauthorized"
+
+
+# --- rate limit ---
+
+
+async def test_join_shares_the_lookup_rate_limit(async_client, joiner_auth):
+    for _ in range(30):
+        await async_client.get("/api/core/v1/invites/nosuchcd")
+
+    response = await async_client.post("/api/core/v1/invites/nosuchcd/join", headers=joiner_auth)
+
+    assert response.status_code == 429
+    assert response.json()["error"]["code"] == "rate_limited"

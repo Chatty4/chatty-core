@@ -104,6 +104,8 @@ class InviteLookupView(AsyncAPIView):
 
 class InviteJoinView(AsyncAPIView):
     async def post(self, request, invite_code: str):
-        result = await InviteService.join(code=invite_code, user_id=request.user.id)
+        result = await InviteService.join(
+            code=invite_code, user_id=request.user.id, ip=client_ip(request)
+        )
         status = 200 if result.already_member else 201
         return Response(JoinTeamResponse(result).data, status=status)

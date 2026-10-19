@@ -259,6 +259,13 @@ class InviteService:
         return invite
 
     @staticmethod
+    async def _limit_code_guesses(ip: str) -> None:
+        """Lookup and join share one budget, so neither can be used to guess codes."""
+        retry_after = await rate_limit(f"invite_lookup:{ip}", LOOKUP_LIMIT, LOOKUP_WINDOW)
+        if retry_after:
+            raise RateLimited(retry_after)
+
+    @staticmethod
     async def create(team_id: UUID, user_id: UUID, max_age: int, max_uses: int) -> InviteResult:
         await TeamService.require_member(team_id, user_id)
         return await sync_to_async(InviteService._create_sync)(team_id, user_id, max_age, max_uses)
@@ -343,9 +350,7 @@ class InviteService:
     @staticmethod
     async def lookup(code: str, ip: str) -> InviteLookupResult:
         """Public invite preview. Rate limited 30/min per IP"""
-        retry_after = await rate_limit(f"invite_lookup:{ip}", LOOKUP_LIMIT, LOOKUP_WINDOW)
-        if retry_after:
-            raise RateLimited(retry_after)
+        await InviteService._limit_code_guesses(ip)
 
         invite = await InviteService._get_invite_or_404(code)
 
@@ -362,8 +367,9 @@ class InviteService:
         )
 
     @staticmethod
-    async def join(code: str, user_id: UUID) -> JoinTeamResult:
+    async def join(code: str, user_id: UUID, ip: str) -> JoinTeamResult:
         """Join the team with an invite. Already a member: nothing changes and uses don't go up."""
+        await InviteService._limit_code_guesses(ip)
         invite = await InviteService._get_invite_or_404(code)
         return await sync_to_async(InviteService._join_sync)(invite.id, invite.team, user_id)
 
