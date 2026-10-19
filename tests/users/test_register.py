@@ -10,6 +10,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 URL = "/api/core/v1/auth/register"
 VALID = {"email": "ana@example.com", "display_name": "Ana Pop", "password": "correct horse battery"}
 RATE_KEY = "register:127.0.0.1"  # the Django test client's REMOTE_ADDR
+# 255 characters, otherwise well formed: the domain labels stay under 64 characters each
+LONG_EMAIL = "a" * 64 + "@" + "b" * 63 + "." + "c" * 63 + "." + "d" * 58 + ".com"
 
 
 @pytest.fixture(autouse=True)
@@ -48,6 +50,7 @@ async def test_register_creates_user(async_client):
     ("field", "value", "reason"),
     [
         ("email", "not-an-email", "invalid"),
+        ("email", LONG_EMAIL, "too_long"),
         ("display_name", "", "blank"),
         ("display_name", "a" * 61, "too_long"),
         ("password", "xq7!mz2pk", "password_too_short"),
