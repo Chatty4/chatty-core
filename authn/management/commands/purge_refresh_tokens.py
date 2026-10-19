@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-from authn.repository import RefreshTokenRepository
+from authn.repositories import RefreshTokenRepository
 
 
 class Command(BaseCommand):

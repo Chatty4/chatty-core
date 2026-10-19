@@ -11,7 +11,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from authn.repository import RefreshTokenRepository
+from authn.repositories import RefreshTokenRepository
 from authn.schemas import TokenPairSchema
 from shared.codes import ErrorCode
 from shared.exceptions import PermissionDenied, Unauthorized, UserInactive
