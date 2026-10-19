@@ -247,6 +247,24 @@ class TeamService:
             raise Conflict(ErrorCode.LAST_OWNER)
         TeamService._remove_member_sync(team_id, user_id)
 
+    @staticmethod
+    async def hand_off_ownership(user_id: UUID) -> None:
+        """Call after a user is deactivated, so none of their teams is left without an active
+        owner."""
+        await sync_to_async(TeamService._hand_off_ownership_sync)(user_id)
+
+    @staticmethod
+    @transaction.atomic
+    def _hand_off_ownership_sync(user_id: UUID) -> None:
+        """In each team the user owns that has no active owner left, the admin who joined first
+        becomes owner, or else the member who joined first. The user keeps their own role."""
+        for team_id in TeamMemberRepository.list_owned_team_ids_sync(user_id):
+            TeamRepository.lock_sync(team_id)
+            first = TeamMemberRepository.first_active_by_rank_sync(team_id)
+            if first is not None and first.role != TeamMember.Role.OWNER:
+                TeamMemberRepository.update_role_sync(first, TeamMember.Role.OWNER)
+                # TODO(CHAT-172): publish team.member.changed (role_changed) after commit
+
 
 class InviteService:
     @staticmethod

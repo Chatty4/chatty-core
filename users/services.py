@@ -80,9 +80,10 @@ class UserService:
         """no user.deactivated event yet. CHAT-172 publishes it here with transaction.on_commit"""
         deactivated = await UserRepository.deactivate_user(user_ids)
         # All selected ids, not only the newly deactivated, so users deactivated
-        # before this fix also lose their leftover sessions
+        # before these fixes also lose their leftover sessions and hand off their teams
         for user_id in user_ids:
             await AuthnService().revoke_all_tokens(str(user_id))
+            await TeamService.hand_off_ownership(user_id)
         return deactivated
 
     @staticmethod

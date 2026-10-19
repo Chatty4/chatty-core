@@ -2,7 +2,17 @@ from datetime import timedelta
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
-from django.db.models import Count, F, IntegerField, OuterRef, Q, QuerySet, Subquery
+from django.db.models import (
+    Case,
+    Count,
+    F,
+    IntegerField,
+    OuterRef,
+    Q,
+    QuerySet,
+    Subquery,
+    When,
+)
 from django.utils import timezone
 
 from shared.pagination import paginate
@@ -122,6 +132,33 @@ class TeamMemberRepository:
             TeamMember.objects.filter(team_id=team_id, role=TeamMember.Role.OWNER).values_list(
                 "user_id", flat=True
             )
+        )
+
+    @staticmethod
+    def list_owned_team_ids_sync(user_id: UUID) -> list[UUID]:
+        """Ids of the live teams this user owns, sorted so their locks are always taken in the
+        same order."""
+        return list(
+            TeamMember.objects.filter(
+                user_id=user_id, role=TeamMember.Role.OWNER, team__deleted_at__isnull=True
+            )
+            .order_by("team_id")
+            .values_list("team_id", flat=True)
+        )
+
+    @staticmethod
+    def first_active_by_rank_sync(team_id: UUID) -> TeamMember | None:
+        """The team's first active member by role (owner, then admin, then member), then by who
+        joined first. None when nobody in the team is active."""
+        rank = Case(
+            When(role=TeamMember.Role.OWNER, then=0),
+            When(role=TeamMember.Role.ADMIN, then=1),
+            default=2,
+        )
+        return (
+            TeamMember.objects.filter(team_id=team_id, user__is_active=True)
+            .order_by(rank, "joined_at", "user_id")
+            .first()
         )
 
     @staticmethod
