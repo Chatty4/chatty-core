@@ -218,7 +218,8 @@ class ChannelMemberRepository:
                     channel_id=channel_id, user_id=user_id, role=role, notify_level=notify_level
                 )
                 for channel_id in channel_ids
-            ]
+            ],
+            ignore_conflicts=True,
         )
 
     @staticmethod
