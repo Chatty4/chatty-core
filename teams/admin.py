@@ -8,7 +8,7 @@ class TeamAdmin(admin.ModelAdmin):
     list_display = ["name", "created_by", "created_at", "deleted_at"]
     list_filter = ["deleted_at"]
     search_fields = ["name"]
-    readonly_fields = ["id", "created_at"]
+    readonly_fields = ["id", "created_at", "deleted_at"]
 
     def has_delete_permission(self, request, obj=None):
         return False  # teams are soft-deleted by TeamService.delete; a hard delete cascades
