@@ -147,6 +147,16 @@ async def test_revoke_invite_not_found_returns_404(async_client, owner_auth):
     assert response.json()["error"]["code"] == "invite_not_found"
 
 
+async def test_revoke_invite_deleted_team_returns_404(async_client, invite, team, owner_auth):
+    team.deleted_at = timezone.now()
+    await team.asave(update_fields=["deleted_at"])
+
+    response = await async_client.delete(url(invite.id), headers=owner_auth)
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "invite_not_found"
+
+
 # --- auth / membership ---
 
 
@@ -154,6 +164,7 @@ async def test_revoke_invite_non_member_returns_403(async_client, invite, member
     response = await async_client.delete(url(invite.id), headers=member_auth)
 
     assert response.status_code == 403
+    assert response.json()["error"]["code"] == "not_a_team_member"
 
 
 async def test_revoke_invite_requires_auth(async_client, invite):
