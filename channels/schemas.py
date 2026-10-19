@@ -28,3 +28,10 @@ class ChannelDetail:
     channel: Channel
     member_count: int
     my: ChannelMember | None  # None when I can read the channel but haven't joined it
+
+
+@dataclass
+class DMResult:
+    channel: Channel
+    member_ids: list[UUID]
+    created: bool  # False when the DM already existed (200 instead of 201)

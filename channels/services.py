@@ -7,7 +7,7 @@ from django.db import IntegrityError, transaction
 from channels import access
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
-from channels.schemas import ChannelAccess, ChannelDetail, MyChannel
+from channels.schemas import ChannelAccess, ChannelDetail, DMResult, MyChannel
 from shared.codes import ErrorCode
 from shared.exceptions import BadRequest, Conflict, NotFound, PermissionDenied, ValidationFailed
 from teams.models import Team
@@ -218,3 +218,66 @@ class ChannelService:
             raise ValidationFailed(fields={"hidden": "invalid"})
 
         return await ChannelMemberRepository.update_settings(member, notify_level, muted, hidden)
+
+    @staticmethod
+    async def open_dm(team_id: UUID, user_id: UUID, user_ids: list[UUID]) -> DMResult:
+        """Open a DM with 1-7 other team members, or return the one these people already have."""
+        team, _ = await TeamService.require_member(team_id, user_id)
+
+        others = [uid for uid in dict.fromkeys(user_ids) if uid != user_id]
+        if not 1 <= len(others) <= 7:
+            raise ValidationFailed(fields={"user_ids": "invalid"})
+
+        in_team = await TeamMemberRepository.list_members_by_user_ids(team_id, others)
+        if len(in_team) != len(others):
+            raise BadRequest(ErrorCode.USER_NOT_IN_TEAM)
+
+        member_ids = [user_id, *others]
+        dm_key = ":".join(sorted(str(uid) for uid in member_ids))
+
+        channel = await ChannelRepository.find_dm(team_id, dm_key)
+        created = False
+        if channel is None:
+            try:
+                channel = await sync_to_async(ChannelService._create_dm_sync)(
+                    team, user_id, member_ids, dm_key
+                )
+                created = True
+            except IntegrityError:  # unique_dm_key_per_team: opened by someone else just now
+                channel = await ChannelRepository.find_dm(team_id, dm_key)
+                if channel is None:  # can't happen: DMs are never deleted
+                    raise
+
+        if not created:
+            # people who left the team lost their DM membership; they get it back
+            await ChannelMemberRepository.add_many(
+                channel.id, member_ids, ChannelMember.NotifyLevel.ALL
+            )
+
+        ids = await ChannelMemberRepository.member_ids_by_channel([channel.id])
+        return DMResult(channel, ids[channel.id], created)
+
+    @staticmethod
+    @transaction.atomic
+    def _create_dm_sync(team: Team, user_id: UUID, member_ids: list[UUID], dm_key: str) -> Channel:
+        """The DM and all its members in one transaction."""
+        channel = ChannelRepository.create_sync(
+            team=team,
+            name="",
+            kind=Channel.Kind.DM,
+            is_default=False,
+            created_by_id=user_id,
+            dm_key=dm_key,
+        )
+
+        for member_id in member_ids:
+            ChannelMemberRepository.create_sync(
+                channel=channel,
+                user_id=member_id,
+                role=ChannelMember.Role.MEMBER,
+                notify_level=ChannelMember.NotifyLevel.ALL,
+            )
+
+        # TODO(CHAT-172): publish membership.changed (added) for each member after commit
+
+        return channel

@@ -10,8 +10,10 @@ from channels.serializers import (
     ChannelMemberResponse,
     ChannelResponse,
     CreateChannelRequest,
+    DMResponse,
     JoinChannelResponse,
     MyChannelResponse,
+    OpenDMRequest,
     UpdateChannelRequest,
     UpdateMySettingsRequest,
 )
@@ -103,3 +105,10 @@ class MyChannelSettingsView(UserAPIView):
         data = validated(UpdateMySettingsRequest, request.data)
         member = await ChannelService.update_my_settings(channel_id, request.user.id, **data)
         return Response(JoinChannelResponse(member).data)
+
+
+class TeamDMsView(UserAPIView):
+    async def post(self, request, team_id: UUID):
+        data = validated(OpenDMRequest, request.data)
+        result = await ChannelService.open_dm(team_id, request.user.id, data["user_ids"])
+        return Response(DMResponse(result).data, status=201 if result.created else 200)
