@@ -128,3 +128,21 @@ async def test_missing_channel_is_404(async_client, owner, member):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "channel_not_found"
+
+
+async def test_user_who_joined_meanwhile_is_not_reported_as_added(
+    async_client, team, owner, member, monkeypatch
+):
+    manager = ChannelMember.objects
+    original = manager.abulk_create
+
+    async def join_first(objs, **kwargs):
+        await add_to(team.general_channel_id, member)  # the parallel join wins the race
+        return await original(objs, **kwargs)
+
+    monkeypatch.setattr(manager, "abulk_create", join_first)
+
+    response = await add_members(async_client, team.general_channel_id, owner, [member.id])
+
+    assert response.status_code == 200
+    assert response.json() == {"added": [], "already_members": [str(member.id)]}
