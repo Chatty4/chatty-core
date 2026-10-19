@@ -103,7 +103,7 @@ JWT_PRIVATE_KEY_PATH = env("JWT_PRIVATE_KEY_PATH")
 JWT_PUBLIC_KEY_PATH = env("JWT_PUBLIC_KEY_PATH")
 JWT_ACCESS_TOKEN_LIFETIME = 900  # 15 min
 JWT_REFRESH_TOKEN_LIFETIME = 2592000  # 30 days
-APP_URL = env.str("APP_URL", default="http://127.0.0.1:3000")
+APP_URL = env.str("APP_URL", default="http://127.0.0.1:5173")
 
 
 # Password validation
