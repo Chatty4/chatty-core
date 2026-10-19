@@ -115,7 +115,7 @@ class TeamService:
         TODO: validate icon_file_id against the files model (ready,
         team_icon purpose, same team).
         """
-        team, member = await TeamService.require_member(
+        team, _ = await TeamService.require_member(
             team_id, user_id, roles={TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
         )
         team = await TeamRepository.update(team, name=name, icon_id=icon_file_id)
@@ -380,7 +380,8 @@ class InviteService:
         Lock the team so concurrent joins (same or different invite) run one at a time,
         then add the user to the team and its default channels.
         """
-        TeamRepository.lock_sync(team.id)
+        if not TeamRepository.lock_sync(team.id):
+            raise NotFound(ErrorCode.INVITE_NOT_FOUND)  # the team was deleted after the lookup
         invite = InviteRepository.lock_by_id_sync(invite_id)
 
         member = TeamMemberRepository.get_member_sync(team.id, user_id)

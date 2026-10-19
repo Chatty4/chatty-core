@@ -6,8 +6,10 @@ from django.utils import timezone
 
 from authn.services import AuthnService
 from channels.models import Channel, ChannelMember
+from shared.exceptions import NotFound
 from shared.redis import clear_rate_limit, get_redis_client
 from teams.models import Invite, Team, TeamMember
+from teams.services import InviteService
 from users.models import User
 
 RATE_KEY = "invite_lookup:127.0.0.1"
@@ -339,6 +341,16 @@ async def test_join_deleted_team_returns_404(async_client, invite, team, joiner_
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "invite_not_found"
+
+
+async def test_join_stops_if_team_was_deleted_meanwhile(invite, team, joiner):
+    # the invite was looked up, then the owner deleted the team before the join's transaction
+    await Team.objects.filter(id=team.id).aupdate(deleted_at=timezone.now())
+
+    with pytest.raises(NotFound):
+        await sync_to_async(InviteService._join_sync)(invite.id, team, joiner.id)
+
+    assert not await TeamMember.objects.filter(team=team, user=joiner).aexists()
 
 
 # --- auth ---

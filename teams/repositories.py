@@ -62,9 +62,10 @@ class TeamRepository:
         return team
 
     @staticmethod
-    def lock_sync(team_id: UUID) -> None:
-        """Lock the team row until the transaction ends."""
-        Team.objects.select_for_update().get(id=team_id)
+    def lock_sync(team_id: UUID) -> bool:
+        """Lock the team row until the transaction ends. False if the team is deleted."""
+        team = Team.objects.select_for_update().only("deleted_at").get(id=team_id)
+        return team.deleted_at is None
 
     @staticmethod
     async def delete(team: Team) -> None:
