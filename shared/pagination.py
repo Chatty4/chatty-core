@@ -44,7 +44,8 @@ async def paginate[T: Model](
 ) -> tuple[list[T], str | None]:
     """One page of `qs` in ascending `sort` order, and the cursor of the next page or None.
 
-    `sort` must end with a unique field (an id) so ties don't skip or repeat rows. Relations in
+    `sort` must end with a unique field (an id) so ties don't skip or repeat rows, and every
+    sort field must be NOT NULL: the ROW() comparison can't page past NULLs. Relations in
     `sort` ("user__display_name") need select_related on `qs`: the cursor reads them.
     """
     # The salt is part of the signature, so a cursor only works for its endpoint and q.
