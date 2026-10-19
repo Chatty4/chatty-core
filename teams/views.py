@@ -4,7 +4,7 @@ from rest_framework.response import Response
 
 from shared.http import client_ip
 from shared.serializers import validated
-from shared.views import AsyncAPIView, UserAPIView
+from shared.views import AsyncAPIView
 from teams.serializers import (
     BaseInviteResponse,
     ChangeRoleRequest,
@@ -24,7 +24,7 @@ from teams.serializers import (
 from teams.services import InviteService, TeamService
 
 
-class TeamsView(UserAPIView):
+class TeamsView(AsyncAPIView):
     async def post(self, request):
         data = validated(CreateTeamRequest, request.data)
         result = await TeamService.create(**data, user_id=request.user.id)
@@ -35,7 +35,7 @@ class TeamsView(UserAPIView):
         return Response({"teams": TeamResponse(teams, many=True).data})
 
 
-class TeamDetailView(UserAPIView):
+class TeamDetailView(AsyncAPIView):
     async def get(self, request, team_id: UUID):
         result = await TeamService.get(team_id=team_id, user_id=request.user.id)
         return Response(TeamDetailResponse(result).data)
@@ -50,7 +50,7 @@ class TeamDetailView(UserAPIView):
         return Response(status=204)
 
 
-class TeamMembersView(UserAPIView):
+class TeamMembersView(AsyncAPIView):
     async def get(self, request, team_id: UUID):
         params = validated(TeamMembersQuery, request.query_params)
         members, next_cursor = await TeamService.list_members(team_id, request.user.id, **params)
@@ -59,7 +59,7 @@ class TeamMembersView(UserAPIView):
         )
 
 
-class TeamMemberDetailView(UserAPIView):
+class TeamMemberDetailView(AsyncAPIView):
     async def put(self, request, team_id: UUID, user_id: UUID):
         data = validated(ChangeRoleRequest, request.data)
         member = await TeamService.change_role(team_id, request.user.id, user_id, data["role"])
@@ -70,13 +70,13 @@ class TeamMemberDetailView(UserAPIView):
         return Response(status=204)
 
 
-class LeaveTeamView(UserAPIView):
+class LeaveTeamView(AsyncAPIView):
     async def post(self, request, team_id: UUID):
         await TeamService.leave(team_id=team_id, user_id=request.user.id)
         return Response(status=204)
 
 
-class TeamInvitesView(UserAPIView):
+class TeamInvitesView(AsyncAPIView):
     async def post(self, request, team_id: UUID):
         data = validated(CreateInviteRequest, request.data)
         result = await InviteService.create(team_id=team_id, user_id=request.user.id, **data)
@@ -87,7 +87,7 @@ class TeamInvitesView(UserAPIView):
         return Response({"invites": BaseInviteResponse(invites, many=True).data})
 
 
-class InviteDetailView(UserAPIView):
+class InviteDetailView(AsyncAPIView):
     async def delete(self, request, invite_id: UUID):
         await InviteService.revoke(invite_id=invite_id, user_id=request.user.id)
         return Response(status=204)
@@ -102,7 +102,7 @@ class InviteLookupView(AsyncAPIView):
         return Response(InviteLookupResponse(result).data)
 
 
-class InviteJoinView(UserAPIView):
+class InviteJoinView(AsyncAPIView):
     async def post(self, request, invite_code: str):
         result = await InviteService.join(code=invite_code, user_id=request.user.id)
         status = 200 if result.already_member else 201

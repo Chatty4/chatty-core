@@ -10,16 +10,22 @@ from shared.views import AsyncAPIView, InternalAPIView
 
 
 class Ok(AsyncAPIView):
+    permission_classes = []
+
     async def get(self, request):
         return Response({"ok": True})
 
 
 class Missing(AsyncAPIView):
+    permission_classes = []
+
     async def get(self, request):
         raise NotFound(ErrorCode.TEAM_NOT_FOUND)
 
 
 class Crash(AsyncAPIView):
+    permission_classes = []
+
     async def get(self, request):
         raise RuntimeError("secret detail")
 
@@ -42,10 +48,16 @@ class Internal(InternalAPIView):
         return Response({"ok": True})
 
 
+class Private(AsyncAPIView):
+    async def get(self, request):
+        return Response({"ok": True})
+
+
 urlpatterns = [
     path("ok", Ok.as_view()),
     path("missing", Missing.as_view()),
     path("crash", Crash.as_view()),
     path("forbidden", Forbidden.as_view()),
     path("internal", Internal.as_view()),
+    path("private", Private.as_view()),
 ]
