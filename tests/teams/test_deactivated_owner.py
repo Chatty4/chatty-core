@@ -79,3 +79,22 @@ async def test_new_owner_cannot_leave_as_last_active_owner(owner, team):
         await TeamService.leave(team.id, admin.id)
 
     assert caught.value.code == ErrorCode.LAST_OWNER
+
+
+async def test_new_owner_cannot_demote_themselves(owner, team):
+    admin = await join(team, ADMIN)
+    await UserService.deactivate([owner.id])
+
+    with pytest.raises(Conflict) as caught:
+        await TeamService.change_role(team.id, admin.id, admin.id, ADMIN)
+
+    assert caught.value.code == ErrorCode.LAST_OWNER
+
+
+async def test_active_owner_can_demote_deactivated_owner(owner, team):
+    admin = await join(team, ADMIN)
+    await UserService.deactivate([owner.id])
+
+    await TeamService.change_role(team.id, admin.id, owner.id, ADMIN)
+
+    assert await role_of(team, owner) == ADMIN

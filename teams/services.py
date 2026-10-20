@@ -180,7 +180,7 @@ class TeamService:
         owner = TeamMember.Role.OWNER
         if me.role != owner and owner in (role, target.role):
             raise PermissionDenied()  # only an owner can make or change an owner
-        if target.role == owner and role != owner and len(owner_ids) == 1:
+        if target.role == owner and role != owner and owner_ids == [target_id]:
             raise Conflict(ErrorCode.LAST_OWNER)
 
         TeamMemberRepository.update_role_sync(target, role)
