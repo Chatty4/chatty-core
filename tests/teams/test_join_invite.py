@@ -109,6 +109,13 @@ async def test_join_creates_team_member(async_client, invite, team, joiner, join
     assert member.role == TeamMember.Role.MEMBER
 
 
+async def test_join_records_the_invite(async_client, invite, team, joiner, joiner_auth):
+    await async_client.post(url(invite.code), headers=joiner_auth)
+
+    member = await TeamMember.objects.aget(team=team, user=joiner)
+    assert member.invite_id == invite.id
+
+
 async def test_join_clears_leftover_channel_rows(
     async_client, invite, team, owner, general, joiner, joiner_auth
 ):

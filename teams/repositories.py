@@ -86,9 +86,11 @@ class TeamRepository:
 
 class TeamMemberRepository:
     @staticmethod
-    def create_sync(team: Team, user_id: UUID, role: str) -> TeamMember:
-        """Create and return a team member."""
-        return TeamMember.objects.create(team=team, user_id=user_id, role=role)
+    def create_sync(
+        team: Team, user_id: UUID, role: str, invite: Invite | None = None
+    ) -> TeamMember:
+        """Create and return a team member. invite is the link they joined with, if any."""
+        return TeamMember.objects.create(team=team, user_id=user_id, role=role, invite=invite)
 
     @staticmethod
     async def get_member(team_id: UUID, user_id: UUID) -> TeamMember | None:
