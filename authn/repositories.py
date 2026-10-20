@@ -8,18 +8,6 @@ from authn.models import RefreshToken
 
 class RefreshTokenRepository:
     @staticmethod
-    async def create(user_id: str, token_hash: str, expires_at: datetime) -> RefreshToken:
-        return await RefreshToken.objects.acreate(
-            user_id=user_id, token_hash=token_hash, expires_at=expires_at
-        )
-
-    @staticmethod
-    def create_sync(user_id: str, token_hash: str, expires_at: datetime) -> RefreshToken:
-        return RefreshToken.objects.create(
-            user_id=user_id, token_hash=token_hash, expires_at=expires_at
-        )
-
-    @staticmethod
     async def get_by_hash(token_hash: str) -> RefreshToken | None:
         return await RefreshToken.objects.filter(token_hash=token_hash).afirst()
 
@@ -30,6 +18,26 @@ class RefreshTokenRepository:
             .select_related("user")
             .filter(token_hash=token_hash)
             .first()
+        )
+
+    @staticmethod
+    def count_old(cutoff: datetime) -> int:
+        return RefreshTokenRepository._stale_qs(cutoff).count()
+
+    @staticmethod
+    def _stale_qs(cutoff: datetime):
+        return RefreshToken.objects.filter(Q(expires_at__lt=cutoff) | Q(revoked_at__lt=cutoff))
+
+    @staticmethod
+    async def create(user_id: str, token_hash: str, expires_at: datetime) -> RefreshToken:
+        return await RefreshToken.objects.acreate(
+            user_id=user_id, token_hash=token_hash, expires_at=expires_at
+        )
+
+    @staticmethod
+    def create_sync(user_id: str, token_hash: str, expires_at: datetime) -> RefreshToken:
+        return RefreshToken.objects.create(
+            user_id=user_id, token_hash=token_hash, expires_at=expires_at
         )
 
     @staticmethod
@@ -56,14 +64,6 @@ class RefreshTokenRepository:
         if except_hash:
             tokens = tokens.exclude(token_hash=except_hash)
         tokens.delete()
-
-    @staticmethod
-    def _stale_qs(cutoff: datetime):
-        return RefreshToken.objects.filter(Q(expires_at__lt=cutoff) | Q(revoked_at__lt=cutoff))
-
-    @staticmethod
-    def count_old(cutoff: datetime) -> int:
-        return RefreshTokenRepository._stale_qs(cutoff).count()
 
     @staticmethod
     def purge_old(cutoff: datetime) -> int:

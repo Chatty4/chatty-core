@@ -12,15 +12,6 @@ class UserRepository:
         return await User.objects.filter(email=email).aexists()
 
     @staticmethod
-    async def create_user(email: str, display_name: str, password: str) -> User:
-        hashed = await sync_to_async(make_password, thread_sensitive=False)(password)
-        return await User.objects.acreate(
-            email=email,
-            display_name=display_name,
-            password=hashed,
-        )
-
-    @staticmethod
     async def get_by_email(email: str) -> User | None:
         return await User.objects.filter(email=email).afirst()
 
@@ -29,13 +20,13 @@ class UserRepository:
         return User.objects.filter(id=user_id).first()
 
     @staticmethod
-    async def deactivate_user(user_ids: list[UUID]) -> list[UUID]:
-        """Deactivate the active users among user_ids and return their ids."""
-        active = User.objects.filter(id__in=user_ids, is_active=True)
-        ids = [user_id async for user_id in active.values_list("id", flat=True)]
-        await User.objects.filter(id__in=ids).aupdate(is_active=False)
-
-        return ids
+    async def create_user(email: str, display_name: str, password: str) -> User:
+        hashed = await sync_to_async(make_password, thread_sensitive=False)(password)
+        return await User.objects.acreate(
+            email=email,
+            display_name=display_name,
+            password=hashed,
+        )
 
     @staticmethod
     async def update_profile(
@@ -47,6 +38,15 @@ class UserRepository:
         await user.asave(update_fields=["display_name", "timezone", "avatar_id"])
 
         return user
+
+    @staticmethod
+    async def deactivate_user(user_ids: list[UUID]) -> list[UUID]:
+        """Deactivate the active users among user_ids and return their ids."""
+        active = User.objects.filter(id__in=user_ids, is_active=True)
+        ids = [user_id async for user_id in active.values_list("id", flat=True)]
+        await User.objects.filter(id__in=ids).aupdate(is_active=False)
+
+        return ids
 
     @staticmethod
     def set_password_sync(user: User, hashed: str) -> None:
