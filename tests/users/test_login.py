@@ -9,12 +9,15 @@ pytestmark = pytest.mark.django_db(transaction=True)
 URL = "/api/core/v1/auth/login"
 EMAIL = "ana@example.com"
 PASSWORD = "correct horse battery"
+OTHER_IP = "10.0.0.2"
 RATE_KEYS = (
     "login_fail:127.0.0.1",
-    f"login_fail:{EMAIL}",
-    "login_fail:nobody@example.com",
-    "login_fail:other@example.com",
-    "login_fail:third@example.com",
+    f"login_fail:{OTHER_IP}",
+    f"login_fail:{EMAIL}:127.0.0.1",
+    f"login_fail:{EMAIL}:{OTHER_IP}",
+    "login_fail:nobody@example.com:127.0.0.1",
+    "login_fail:other@example.com:127.0.0.1",
+    "login_fail:third@example.com:127.0.0.1",
 )
 
 
@@ -141,7 +144,7 @@ async def test_login_successes_do_not_lock_ip(async_client, user):
 async def test_login_over_limit_rejected_before_hashing(async_client, user, monkeypatch):
     # The counter is already full: the request must be rejected before any hash work
     for _ in range(5):
-        await rate_limit(f"login_fail:{EMAIL}", 5, 900)
+        await rate_limit(f"login_fail:{EMAIL}:127.0.0.1", 5, 900)
 
     hashed = []
 
@@ -174,6 +177,27 @@ async def test_login_ignores_bad_bearer(async_client, user):
         {"email": EMAIL, "password": PASSWORD},
         content_type="application/json",
         headers={"Authorization": "Bearer garbage"},
+    )
+
+    assert response.status_code == 200
+
+
+async def test_wrong_guesses_from_one_ip_dont_lock_out_another_ip(async_client, user, settings):
+    settings.BEHIND_PROXY = True  # client_ip() reads X-Real-IP, so the test can pick the IP
+    attacker = {"X-Real-IP": "127.0.0.1"}
+    for _ in range(5):
+        await async_client.post(
+            URL,
+            {"email": EMAIL, "password": "wrong"},
+            content_type="application/json",
+            headers=attacker,
+        )
+
+    response = await async_client.post(
+        URL,
+        {"email": EMAIL, "password": PASSWORD},
+        content_type="application/json",
+        headers={"X-Real-IP": OTHER_IP},
     )
 
     assert response.status_code == 200
