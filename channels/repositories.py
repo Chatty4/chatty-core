@@ -152,7 +152,8 @@ class ChannelMemberRepository:
 
     @staticmethod
     def lock_owner_ids_sync(channel_id: UUID) -> list[UUID]:
-        """Lock the channel row until the transaction ends, then return its owners' user ids.
+        """Lock the channel row until the transaction ends, then return its active owners' user
+        ids. Deactivated owners don't count: they can't manage the channel.
 
         Locking the channel, not the owner rows, makes a second leave wait for the first one's
         hand-off, so it sees the member who was just promoted.
@@ -160,7 +161,9 @@ class ChannelMemberRepository:
         Channel.objects.select_for_update().filter(id=channel_id).first()
         return list(
             ChannelMember.objects.filter(
-                channel_id=channel_id, role=ChannelMember.Role.OWNER
+                channel_id=channel_id,
+                role=ChannelMember.Role.OWNER,
+                user__is_active=True,
             ).values_list("user_id", flat=True)
         )
 
@@ -170,9 +173,10 @@ class ChannelMemberRepository:
 
     @staticmethod
     def promote_first_joined_sync(channel_id: UUID) -> None:
-        """Make the member who joined first the owner. No-op when the channel is empty."""
+        """Make the active member who joined first the owner. No-op when no active member is
+        left."""
         first = (
-            ChannelMember.objects.filter(channel_id=channel_id)
+            ChannelMember.objects.filter(channel_id=channel_id, user__is_active=True)
             .order_by("joined_at", "user_id")
             .first()
         )

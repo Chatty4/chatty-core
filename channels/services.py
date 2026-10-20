@@ -130,7 +130,8 @@ class ChannelService:
         """The owner lock stops two owners leaving at once from both skipping the hand-off."""
         owner_ids = ChannelMemberRepository.lock_owner_ids_sync(channel.id)
         ChannelMemberRepository.delete_sync(channel.id, user_id)
-        if channel.kind == Channel.Kind.PRIVATE and owner_ids == [user_id]:
+        # hand off when no active owner other than the one leaving is left
+        if channel.kind == Channel.Kind.PRIVATE and set(owner_ids) <= {user_id}:
             ChannelMemberRepository.promote_first_joined_sync(channel.id)
         # TODO(CHAT-172): publish membership.changed (removed) after commit
 

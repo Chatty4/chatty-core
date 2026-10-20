@@ -5,9 +5,11 @@ import pytest
 from django.utils import timezone
 
 from channels.models import Channel, ChannelMember
+from channels.services import ChannelService
 from teams.models import TeamMember
 from teams.services import TeamService
 from tests.helpers import headers_for, make_user
+from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -123,3 +125,53 @@ async def test_missing_channel_is_404(async_client, member):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "channel_not_found"
+
+
+async def deactivate(user) -> None:
+    await User.objects.filter(id=user.id).aupdate(is_active=False)
+
+
+async def private_channel(team) -> Channel:
+    return await Channel.objects.acreate(team_id=team.id, name="secret", kind=Channel.Kind.PRIVATE)
+
+
+async def test_deactivated_co_owner_does_not_block_hand_off(async_client, team, owner, member):
+    gone = await make_user("gone@example.com")
+    secret = await private_channel(team)
+    await add_to(secret.id, owner, ChannelMember.Role.OWNER)
+    await add_to(secret.id, gone, ChannelMember.Role.OWNER)
+    await add_to(secret.id, member)
+    await deactivate(gone)
+
+    await leave(async_client, secret.id, owner)
+
+    assert await role_of(secret.id, member) == "owner"
+
+
+async def test_hand_off_skips_deactivated_members(async_client, team, owner, member):
+    gone = await make_user("gone@example.com")
+    secret = await private_channel(team)
+    await add_to(secret.id, owner, ChannelMember.Role.OWNER)
+    await add_to(secret.id, gone)  # joined before member
+    late = await add_to(secret.id, member)
+    await ChannelMember.objects.filter(pk=late.pk).aupdate(
+        joined_at=timezone.now() + timedelta(hours=1)
+    )
+    await deactivate(gone)
+
+    await leave(async_client, secret.id, owner)
+
+    assert await role_of(secret.id, member) == "owner"
+    assert await role_of(secret.id, gone) == "member"
+
+
+async def test_removing_deactivated_sole_owner_still_hands_off(team, owner, member):
+    gone = await make_user("gone@example.com")
+    secret = await private_channel(team)
+    await add_to(secret.id, gone, ChannelMember.Role.OWNER)
+    await add_to(secret.id, member)
+    await deactivate(gone)
+
+    await ChannelService.remove_member(secret.id, owner.id, gone.id)
+
+    assert await role_of(secret.id, member) == "owner"

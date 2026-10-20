@@ -229,7 +229,7 @@ class TeamService:
         for channel_id in ChannelMemberRepository.list_private_channel_ids_sync(team_id, user_id):
             owner_ids = ChannelMemberRepository.lock_owner_ids_sync(channel_id)
             ChannelMemberRepository.delete_sync(channel_id, user_id)
-            if owner_ids == [user_id]:
+            if set(owner_ids) <= {user_id}:  # no active owner other than them is left
                 ChannelMemberRepository.promote_first_joined_sync(channel_id)
         ChannelMemberRepository.delete_in_team_sync(team_id, user_id)
         TeamMemberRepository.delete_sync(team_id, user_id)
