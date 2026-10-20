@@ -3,6 +3,7 @@ from asgiref.sync import sync_to_async
 
 from authn.models import RefreshToken
 from shared.redis import get_redis_client
+from tests.helpers import age_rotated_tokens
 from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -142,6 +143,7 @@ async def test_refresh_token_reuse_deletes_all_sessions(async_client, user):
         {"refresh_token": session_a.refresh_token},
         content_type="application/json",
     )
+    await age_rotated_tokens(user)  # past the grace window: this replay is theft
 
     # Replay the old (revoked) session_a token — reuse detected
     response = await async_client.post(

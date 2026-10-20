@@ -4,6 +4,7 @@ from asgiref.sync import sync_to_async
 from authn.models import RefreshToken
 from authn.services import AuthnService
 from shared.exceptions import Unauthorized
+from tests.helpers import age_rotated_tokens
 from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -45,6 +46,7 @@ async def test_reusing_rotated_token_deletes_every_session(user):
     stolen = await service.issue_tokens(user)
     other = await service.issue_tokens(user)
     await service.refresh_tokens(stolen.refresh_token)
+    await age_rotated_tokens(user)
 
     with pytest.raises(Unauthorized):
         await service.refresh_tokens(stolen.refresh_token)
@@ -52,6 +54,18 @@ async def test_reusing_rotated_token_deletes_every_session(user):
     assert not await RefreshToken.objects.filter(user=user).aexists()
     with pytest.raises(Unauthorized):
         await service.refresh_tokens(other.refresh_token)
+
+
+async def test_reuse_within_grace_keeps_other_sessions(user):
+    service = AuthnService()
+    lost = await service.issue_tokens(user)
+    other = await service.issue_tokens(user)
+    await service.refresh_tokens(lost.refresh_token)  # the response that never arrived
+
+    with pytest.raises(Unauthorized):
+        await service.refresh_tokens(lost.refresh_token)
+
+    assert (await service.refresh_tokens(other.refresh_token)).refresh_token
 
 
 async def test_logout_with_rotated_token_is_a_no_op(user):

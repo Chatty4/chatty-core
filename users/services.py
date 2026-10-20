@@ -87,13 +87,14 @@ class UserService:
 
     @staticmethod
     async def login(email: str, password: str, ip: str) -> tuple[TokenPairSchema, User]:
-        fail_keys = (f"login_fail:{email}", f"login_fail:{ip}")
+        # Email + IP, not email alone: wrong guesses from one IP can't lock the real user out
+        pair_key, ip_key = f"login_fail:{email}:{ip}", f"login_fail:{ip}"
         user = await UserRepository.get_by_email(email)
 
         # Count the attempt before any hash work, so requests over the limit (parallel ones
         # included) are rejected without hashing.
         retry_after = 0
-        for key in fail_keys:
+        for key in (pair_key, ip_key):
             retry_after = retry_after or await rate_limit(key, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW)
         if retry_after:
             raise RateLimited(retry_after, ErrorCode.TOO_MANY_ATTEMPTS)
@@ -106,8 +107,8 @@ class UserService:
             if await user.acheck_password(password):
                 raise UserInactive()
         elif await user.acheck_password(password):
-            await clear_rate_limit(f"login_fail:{email}")
-            await undo_rate_limit(f"login_fail:{ip}")
+            await clear_rate_limit(pair_key)
+            await undo_rate_limit(ip_key)
             tokens = await AuthnService().issue_tokens(user)
             return tokens, user
 
