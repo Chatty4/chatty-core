@@ -129,9 +129,9 @@ class TeamMemberRepository:
         """
         TeamRepository.lock_sync(team_id)
         return list(
-            TeamMember.objects.filter(team_id=team_id, role=TeamMember.Role.OWNER).values_list(
-                "user_id", flat=True
-            )
+            TeamMember.objects.filter(
+                team_id=team_id, role=TeamMember.Role.OWNER, user__is_active=True
+            ).values_list("user_id", flat=True)
         )
 
     @staticmethod
@@ -248,6 +248,13 @@ class InviteRepository:
         Invite.objects.filter(
             team_id=team_id, created_by_id=user_id, revoked_at__isnull=True
         ).update(revoked_at=timezone.now())
+
+    @staticmethod
+    async def revoke_all_created_by(user_id: UUID) -> None:
+        """Revoke every invite this user created, in any team, that isn't revoked yet."""
+        await Invite.objects.filter(created_by_id=user_id, revoked_at__isnull=True).aupdate(
+            revoked_at=timezone.now()
+        )
 
     @staticmethod
     def lock_by_id_sync(invite_id: UUID) -> Invite:

@@ -180,7 +180,7 @@ class TeamService:
         owner = TeamMember.Role.OWNER
         if me.role != owner and owner in (role, target.role):
             raise PermissionDenied()  # only an owner can make or change an owner
-        if target.role == owner and role != owner and len(owner_ids) == 1:
+        if target.role == owner and role != owner and owner_ids == [target_id]:
             raise Conflict(ErrorCode.LAST_OWNER)
 
         TeamMemberRepository.update_role_sync(target, role)
@@ -361,6 +361,11 @@ class InviteService:
         if invite.revoked_at is not None:
             return
         await InviteRepository.revoke(invite)
+
+    @staticmethod
+    async def revoke_all_created_by(user_id: UUID) -> None:
+        """Call after a user is deactivated, so their links stop letting people in."""
+        await InviteRepository.revoke_all_created_by(user_id)
 
     @staticmethod
     def _check_validity(invite: Invite) -> tuple[bool, str | None]:

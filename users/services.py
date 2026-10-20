@@ -9,7 +9,7 @@ from authn.services import AuthnService
 from shared.codes import ErrorCode
 from shared.exceptions import BadRequest, Conflict, RateLimited, Unauthorized, UserInactive
 from shared.redis import clear_rate_limit, rate_limit, undo_rate_limit
-from teams.services import TeamService
+from teams.services import InviteService, TeamService
 from users.models import User
 from users.repositories import UserRepository
 from users.schemas import Me
@@ -84,6 +84,7 @@ class UserService:
         for user_id in user_ids:
             await AuthnService().revoke_all_tokens(str(user_id))
             await TeamService.hand_off_ownership(user_id)
+            await InviteService.revoke_all_created_by(user_id)
         return deactivated
 
     @staticmethod
