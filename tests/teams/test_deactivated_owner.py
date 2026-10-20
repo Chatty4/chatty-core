@@ -2,6 +2,8 @@ import uuid
 
 import pytest
 
+from shared.codes import ErrorCode
+from shared.exceptions import Conflict
 from teams.models import TeamMember
 from teams.services import TeamService
 from tests.helpers import make_user
@@ -67,3 +69,13 @@ async def test_nothing_changes_with_another_active_owner(owner, team):
 
     assert await role_of(team, other_owner) == OWNER
     assert await role_of(team, admin) == ADMIN
+
+
+async def test_new_owner_cannot_leave_as_last_active_owner(owner, team):
+    admin = await join(team, ADMIN)
+    await UserService.deactivate([owner.id])
+
+    with pytest.raises(Conflict) as caught:
+        await TeamService.leave(team.id, admin.id)
+
+    assert caught.value.code == ErrorCode.LAST_OWNER

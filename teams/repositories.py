@@ -129,9 +129,9 @@ class TeamMemberRepository:
         """
         TeamRepository.lock_sync(team_id)
         return list(
-            TeamMember.objects.filter(team_id=team_id, role=TeamMember.Role.OWNER).values_list(
-                "user_id", flat=True
-            )
+            TeamMember.objects.filter(
+                team_id=team_id, role=TeamMember.Role.OWNER, user__is_active=True
+            ).values_list("user_id", flat=True)
         )
 
     @staticmethod
