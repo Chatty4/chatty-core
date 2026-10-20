@@ -45,9 +45,10 @@ class AuthnService:
         except jwt.InvalidTokenError:
             raise Unauthorized(ErrorCode.UNAUTHORIZED, "invalid token")
 
-    async def check_own_refresh_token(self, raw_token: str, user_id: str) -> None:
-        """Raise unless raw_token is a live refresh token owned by user_id."""
-        token = await RefreshTokenRepository.get_by_hash(_hash_token(raw_token))
+    def check_own_refresh_token_sync(self, raw_token: str, user_id: str) -> None:
+        """Raise unless raw_token is a live refresh token owned by user_id. Locks the token row
+        until the caller's transaction ends, so the token can't be rotated in the meantime."""
+        token = RefreshTokenRepository.get_by_hash_sync(_hash_token(raw_token))
         if token is None:
             raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
         if str(token.user_id) != user_id:

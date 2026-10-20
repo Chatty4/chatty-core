@@ -9,6 +9,7 @@ from authn.models import RefreshToken
 from authn.services import AuthnService
 from shared.redis import get_redis_client, rate_limit
 from users.models import User
+from users.services import UserService
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -208,3 +209,28 @@ async def test_bad_refresh_token_with_right_password_is_not_a_failed_attempt(
     response = await change(async_client, this_device)
 
     assert response.status_code == 204
+
+
+async def test_refresh_during_change_keeps_password_and_sessions(
+    async_client, user, this_device, other_device, monkeypatch
+):
+    original = UserService._revoke_and_set_password_sync
+
+    def refreshed_first(user, hashed, keep_raw_token):
+        # this device refreshes after the request started, before the transaction
+        def token_hash(raw):
+            return hashlib.sha256(raw.encode()).hexdigest()
+
+        AuthnService()._rotate_sync(
+            token_hash(keep_raw_token), token_hash("rt_new"), timezone.now() + timedelta(days=30)
+        )
+        original(user, hashed, keep_raw_token)
+
+    monkeypatch.setattr(UserService, "_revoke_and_set_password_sync", staticmethod(refreshed_first))
+
+    response = await change(async_client, this_device)
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_refresh_token"
+    assert await password_is_old(user)
+    assert not await is_logged_out(other_device.refresh_token)

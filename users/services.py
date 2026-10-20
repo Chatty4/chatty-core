@@ -63,13 +63,15 @@ class UserService:
             raise BadRequest(ErrorCode.WRONG_PASSWORD)
 
         await clear_rate_limit(key)
-        await AuthnService().check_own_refresh_token(refresh_token, str(user.id))
         hashed = await sync_to_async(make_password, thread_sensitive=False)(new_password)
         await sync_to_async(UserService._revoke_and_set_password_sync)(user, hashed, refresh_token)
 
     @staticmethod
     @transaction.atomic
     def _revoke_and_set_password_sync(user: User, hashed: str, keep_raw_token: str) -> None:
+        """The kept token is checked and locked first, so this device can't rotate it while its
+        other tokens are deleted."""
+        AuthnService().check_own_refresh_token_sync(keep_raw_token, str(user.id))
         AuthnService().revoke_all_tokens_sync(str(user.id), keep_raw_token)
         UserRepository.set_password_sync(user, hashed)
 
