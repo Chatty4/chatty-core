@@ -43,6 +43,10 @@ class AuthnService:
         if token is None:
             raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
         if token.revoked_at is not None:
+            grace = timedelta(seconds=settings.JWT_REFRESH_REUSE_GRACE)
+            if timezone.now() - token.revoked_at < grace:
+                # a retry after a lost response: reject it, but keep the other devices logged in
+                raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
             return str(token.user_id), True
         if token.expires_at <= timezone.now():
             raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
