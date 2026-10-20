@@ -53,8 +53,9 @@ authn/                  refresh token model, RS256 JWT issuance, rotation and re
   migrations/
 <app>/                  users, teams, channels, files, ...
   models.py             tables only: fields, constraints, indexes. No business logic
-  repositories.py       the only place that queries the ORM
+  repositories.py       the only place that queries the ORM (a package in teams and channels)
   services.py           business rules, transactions, events. No DRF, no request objects
+                        (a package in teams)
   schemas.py            dataclasses that services return (TeamResult, ChannelAccess, ...)
   access.py             (optional) pure permission rules, no DB: channels/access.py (read / write / manage)
   serializers.py        request validation and response shapes
@@ -71,7 +72,16 @@ tests/<app>/            one file per endpoint or rule (test_join_channel.py, tes
 ```
 
 Start each layer as one module. Turn it into a package (`services/__init__.py`, `services/invites.py`, ...)
-when it grows past roughly 300 lines.
+when it grows past roughly 300 lines. A package has one class per module, and its `__init__.py`
+re-exports the classes, so imports don't change (`from teams.services import TeamService`). Today:
+
+- `teams/services/`: `teams.py` (TeamService), `invites.py` (InviteService)
+- `teams/repositories/`: `teams.py`, `members.py`, `invites.py`
+- `channels/repositories/`: `channels.py`, `members.py`
+
+In tests, patch methods on the class (`monkeypatch.setattr(TeamService, "x", ...)` or the string
+`"teams.services.TeamService.x"`): both keep working when a module turns into a package. A
+module-level function has to be patched in the module that uses it.
 
 ## Layers and dependency rule
 
@@ -93,6 +103,18 @@ Calls go one way only: `views -> services -> repositories -> models`.
   (inside `transaction.atomic`, authentication) or for a read no service offers. Use another
   app's model manager only to lock a row (`select_for_update`).
 - `shared/` never imports from domain apps.
+
+### Method order
+
+Every repository and service class uses the same order. Put each private helper right after the
+public method that uses it (`async def leave` then `def _leave_sync`), and keep an async method next
+to its `_sync` twin.
+
+- **services**: shared checks and lookups used by several methods or other apps (`require_member`,
+  `_get_*_or_404`), then create, read (`get`, `list_*`), update, delete, then the other actions
+  (`join`, `leave`, `change_role`, ...).
+- **repositories**: reads (`get_*`, `find_*`, `list_*`, `count_*`), then create, update, delete,
+  then locks (`lock_*`).
 
 ## Async rules
 

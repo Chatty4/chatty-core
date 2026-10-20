@@ -40,6 +40,52 @@ class UserService:
             raise Conflict(ErrorCode.EMAIL_TAKEN)
 
     @staticmethod
+    async def get_me(user: User) -> Me:
+        return Me(user, await TeamService.list_for_user(user.id))
+
+    @staticmethod
+    async def update_profile(
+        user: User, display_name: str, timezone: str, avatar_file_id: UUID | None
+    ) -> Me:
+        user = await UserRepository.update_profile(user, display_name, timezone, avatar_file_id)
+        return await UserService.get_me(user)
+
+    @staticmethod
+    async def change_password(
+        user: User, old_password: str, new_password: str, refresh_token: str
+    ) -> None:
+        key = f"change_pw_fail:{user.id}"
+        retry_after = await rate_limit(key, CHANGE_PW_FAIL_LIMIT, CHANGE_PW_FAIL_WINDOW)
+        if retry_after:
+            raise RateLimited(retry_after)
+
+        if not await user.acheck_password(old_password):
+            raise BadRequest(ErrorCode.WRONG_PASSWORD)
+
+        await clear_rate_limit(key)
+        await AuthnService().check_own_refresh_token(refresh_token, str(user.id))
+        hashed = await sync_to_async(make_password, thread_sensitive=False)(new_password)
+        await sync_to_async(UserService._revoke_and_set_password_sync)(user, hashed, refresh_token)
+
+    @staticmethod
+    @transaction.atomic
+    def _revoke_and_set_password_sync(user: User, hashed: str, keep_raw_token: str) -> None:
+        AuthnService().revoke_all_tokens_sync(str(user.id), keep_raw_token)
+        UserRepository.set_password_sync(user, hashed)
+
+    @staticmethod
+    async def deactivate(user_ids: list[UUID]) -> list[UUID]:
+        """no user.deactivated event yet. CHAT-172 publishes it here with transaction.on_commit"""
+        deactivated = await UserRepository.deactivate_user(user_ids)
+        # All selected ids, not only the newly deactivated, so users deactivated
+        # before these fixes also lose their leftover sessions and hand off their teams
+        for user_id in user_ids:
+            await AuthnService().revoke_all_tokens(str(user_id))
+            await TeamService.hand_off_ownership(user_id)
+            await InviteService.revoke_all_created_by(user_id)
+        return deactivated
+
+    @staticmethod
     async def login(email: str, password: str, ip: str) -> tuple[TokenPairSchema, User]:
         fail_keys = (f"login_fail:{email}", f"login_fail:{ip}")
         user = await UserRepository.get_by_email(email)
@@ -74,49 +120,3 @@ class UserService:
     @staticmethod
     async def logout(refresh_token: str, user_id: UUID) -> None:
         await AuthnService().revoke_refresh_token(refresh_token, str(user_id))
-
-    @staticmethod
-    async def deactivate(user_ids: list[UUID]) -> list[UUID]:
-        """no user.deactivated event yet. CHAT-172 publishes it here with transaction.on_commit"""
-        deactivated = await UserRepository.deactivate_user(user_ids)
-        # All selected ids, not only the newly deactivated, so users deactivated
-        # before these fixes also lose their leftover sessions and hand off their teams
-        for user_id in user_ids:
-            await AuthnService().revoke_all_tokens(str(user_id))
-            await TeamService.hand_off_ownership(user_id)
-            await InviteService.revoke_all_created_by(user_id)
-        return deactivated
-
-    @staticmethod
-    async def get_me(user: User) -> Me:
-        return Me(user, await TeamService.list_for_user(user.id))
-
-    @staticmethod
-    async def update_profile(
-        user: User, display_name: str, timezone: str, avatar_file_id: UUID | None
-    ) -> Me:
-        user = await UserRepository.update_profile(user, display_name, timezone, avatar_file_id)
-        return await UserService.get_me(user)
-
-    @staticmethod
-    @transaction.atomic
-    def _revoke_and_set_password_sync(user: User, hashed: str, keep_raw_token: str) -> None:
-        AuthnService().revoke_all_tokens_sync(str(user.id), keep_raw_token)
-        UserRepository.set_password_sync(user, hashed)
-
-    @staticmethod
-    async def change_password(
-        user: User, old_password: str, new_password: str, refresh_token: str
-    ) -> None:
-        key = f"change_pw_fail:{user.id}"
-        retry_after = await rate_limit(key, CHANGE_PW_FAIL_LIMIT, CHANGE_PW_FAIL_WINDOW)
-        if retry_after:
-            raise RateLimited(retry_after)
-
-        if not await user.acheck_password(old_password):
-            raise BadRequest(ErrorCode.WRONG_PASSWORD)
-
-        await clear_rate_limit(key)
-        await AuthnService().check_own_refresh_token(refresh_token, str(user.id))
-        hashed = await sync_to_async(make_password, thread_sensitive=False)(new_password)
-        await sync_to_async(UserService._revoke_and_set_password_sync)(user, hashed, refresh_token)
