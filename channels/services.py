@@ -48,12 +48,6 @@ class ChannelService:
         return ChannelAccess(channel, team_member, channel_member)
 
     @staticmethod
-    async def get(channel_id: UUID, user_id: UUID) -> ChannelDetail:
-        access = await ChannelService.require_access(channel_id, user_id, "read")
-        member_count = await ChannelMemberRepository.count(channel_id)
-        return ChannelDetail(access.channel, member_count, access.channel_member)
-
-    @staticmethod
     async def create(team_id: UUID, user_id: UUID, name: str, kind: str, topic: str) -> Channel:
         team, _ = await TeamService.require_member(team_id, user_id)
         try:
@@ -79,6 +73,12 @@ class ChannelService:
         return channel
 
     @staticmethod
+    async def get(channel_id: UUID, user_id: UUID) -> ChannelDetail:
+        access = await ChannelService.require_access(channel_id, user_id, "read")
+        member_count = await ChannelMemberRepository.count(channel_id)
+        return ChannelDetail(access.channel, member_count, access.channel_member)
+
+    @staticmethod
     async def list_mine(team_id: UUID, user_id: UUID) -> list[MyChannel]:
         """The sidebar: every channel and DM I'm in, hidden DMs included"""
         await TeamService.require_member(team_id, user_id)
@@ -100,6 +100,58 @@ class ChannelService:
     ) -> tuple[list[Channel], str | None]:
         await TeamService.require_member(team_id, user_id)
         return await ChannelRepository.browse(team_id, user_id, q, cursor, limit)
+
+    @staticmethod
+    async def list_members(
+        channel_id: UUID, user_id: UUID, limit: int, cursor: str | None = None
+    ) -> tuple[list[ChannelMember], str | None]:
+        await ChannelService.require_access(channel_id, user_id, "read")
+        return await ChannelMemberRepository.page(channel_id, cursor, limit)
+
+    @staticmethod
+    async def update(
+        channel_id: UUID, user_id: UUID, name: str, topic: str | None = None
+    ) -> ChannelDetail:
+        """Rename and change the topic. No topic keeps the current one."""
+        access = await ChannelService.require_access(channel_id, user_id, "manage")
+        if access.channel.archived_at is not None:
+            raise Conflict(ErrorCode.CHANNEL_ARCHIVED)
+        try:
+            channel = await ChannelRepository.update(
+                access.channel, name, access.channel.topic if topic is None else topic
+            )
+        except IntegrityError:  # unique_channel_name_per_team, also when two renames race
+            raise Conflict(ErrorCode.CHANNEL_NAME_TAKEN) from None
+        # TODO(CHAT-172): publish channel.updated after commit
+        member_count = await ChannelMemberRepository.count(channel_id)
+        return ChannelDetail(channel, member_count, access.channel_member)
+
+    @staticmethod
+    async def update_my_settings(
+        channel_id: UUID, user_id: UUID, notify_level: str, muted: bool, hidden: bool
+    ) -> ChannelMember:
+        """My notification settings for a channel. Hidden is only for DMs."""
+        # TODO(CHAT-172): publish membership.changed (settings) after commit.
+        access = await ChannelService.require_access(channel_id, user_id, "member")
+        member = access.channel_member
+        assert member is not None  # require_access("member") raised otherwise
+
+        if hidden and access.channel.kind != Channel.Kind.DM:
+            raise ValidationFailed(fields={"hidden": "invalid"})
+
+        return await ChannelMemberRepository.update_settings(member, notify_level, muted, hidden)
+
+    @staticmethod
+    async def archive(channel_id: UUID, user_id: UUID) -> ChannelDetail:
+        access = await ChannelService.require_access(channel_id, user_id, "manage")
+        channel = access.channel
+        if channel.is_default:
+            raise BadRequest(ErrorCode.CANNOT_ARCHIVE_DEFAULT)
+        if channel.archived_at is None:  # not archived yet. if it already is, return 200
+            channel = await ChannelRepository.archive(channel)
+            # TODO(CHAT-172): publish channel.updated (archived: true) after commit
+        member_count = await ChannelMemberRepository.count(channel_id)
+        return ChannelDetail(channel, member_count, access.channel_member)
 
     @staticmethod
     async def join(channel_id: UUID, user_id: UUID) -> ChannelMember:
@@ -136,13 +188,6 @@ class ChannelService:
         # TODO(CHAT-172): publish membership.changed (removed) after commit
 
     @staticmethod
-    async def list_members(
-        channel_id: UUID, user_id: UUID, limit: int, cursor: str | None = None
-    ) -> tuple[list[ChannelMember], str | None]:
-        await ChannelService.require_access(channel_id, user_id, "read")
-        return await ChannelMemberRepository.page(channel_id, cursor, limit)
-
-    @staticmethod
     async def add_members(
         channel_id: UUID, user_id: UUID, user_ids: list[UUID]
     ) -> tuple[list[UUID], list[UUID]]:
@@ -172,51 +217,6 @@ class ChannelService:
             raise NotFound(ErrorCode.MEMBER_NOT_FOUND)
         # same as leave: removing the last owner of a private channel hands it off too
         await sync_to_async(ChannelService._leave_sync)(access.channel, target_id)
-
-    @staticmethod
-    async def update(
-        channel_id: UUID, user_id: UUID, name: str, topic: str | None = None
-    ) -> ChannelDetail:
-        """Rename and change the topic. No topic keeps the current one."""
-        access = await ChannelService.require_access(channel_id, user_id, "manage")
-        if access.channel.archived_at is not None:
-            raise Conflict(ErrorCode.CHANNEL_ARCHIVED)
-        try:
-            channel = await ChannelRepository.update(
-                access.channel, name, access.channel.topic if topic is None else topic
-            )
-        except IntegrityError:  # unique_channel_name_per_team, also when two renames race
-            raise Conflict(ErrorCode.CHANNEL_NAME_TAKEN) from None
-        # TODO(CHAT-172): publish channel.updated after commit
-        member_count = await ChannelMemberRepository.count(channel_id)
-        return ChannelDetail(channel, member_count, access.channel_member)
-
-    @staticmethod
-    async def archive(channel_id: UUID, user_id: UUID) -> ChannelDetail:
-        access = await ChannelService.require_access(channel_id, user_id, "manage")
-        channel = access.channel
-        if channel.is_default:
-            raise BadRequest(ErrorCode.CANNOT_ARCHIVE_DEFAULT)
-        if channel.archived_at is None:  # not archived yet. if it already is, return 200
-            channel = await ChannelRepository.archive(channel)
-            # TODO(CHAT-172): publish channel.updated (archived: true) after commit
-        member_count = await ChannelMemberRepository.count(channel_id)
-        return ChannelDetail(channel, member_count, access.channel_member)
-
-    @staticmethod
-    async def update_my_settings(
-        channel_id: UUID, user_id: UUID, notify_level: str, muted: bool, hidden: bool
-    ) -> ChannelMember:
-        """My notification settings for a channel. Hidden is only for DMs."""
-        # TODO(CHAT-172): publish membership.changed (settings) after commit.
-        access = await ChannelService.require_access(channel_id, user_id, "member")
-        member = access.channel_member
-        assert member is not None  # require_access("member") raised otherwise
-
-        if hidden and access.channel.kind != Channel.Kind.DM:
-            raise ValidationFailed(fields={"hidden": "invalid"})
-
-        return await ChannelMemberRepository.update_settings(member, notify_level, muted, hidden)
 
     @staticmethod
     async def open_dm(team_id: UUID, user_id: UUID, user_ids: list[UUID]) -> DMResult:

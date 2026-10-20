@@ -219,6 +219,7 @@ class TeamService:
         ChannelMemberRepository.delete_in_team_sync(team_id, user_id)
         TeamMemberRepository.delete_sync(team_id, user_id)
         InviteRepository.revoke_created_by_sync(team_id, user_id)
+        # TODO(CHAT-172): publish team.member.changed (removed) after commit.
 
     @staticmethod
     async def leave(team_id: UUID, user_id: UUID) -> None:
@@ -252,3 +253,4 @@ class TeamService:
             first = TeamMemberRepository.first_active_by_rank_sync(team_id)
             if first is not None and first.role != TeamMember.Role.OWNER:
                 TeamMemberRepository.update_role_sync(first, TeamMember.Role.OWNER)
+                # TODO(CHAT-172): publish team.member.changed (role_changed) after commit
