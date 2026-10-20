@@ -11,7 +11,7 @@ Contracts live in `../chatty-infra/docs`, not in this repo:
 - `api-core.md`: public endpoints, error body, pagination
 - `api-internal.md`: `/internal` endpoints and `X-Service-Token` auth
 - `core-events.md` and `events.md`: Redis events we publish
-- `decisions.md`: agreements with chatty-chat (D-01 ... D-08)
+- `decisions.md`: agreements with chatty-chat (D-01 ... D-11)
 
 Implement exactly what the contract says. If an API, event or decision has to change, update the doc in a
 chatty-infra PR first and link it from the chatty-core PR.
@@ -56,9 +56,12 @@ authn/                  refresh token model, RS256 JWT issuance, rotation and re
   repositories.py       the only place that queries the ORM
   services.py           business rules, transactions, events. No DRF, no request objects
   schemas.py            dataclasses that services return (TeamResult, ChannelAccess, ...)
+  access.py             (optional) pure permission rules, no DB: channels/access.py (read / write / manage)
   serializers.py        request validation and response shapes
   views.py              public API endpoints (thin)
+  admin.py              Django admin; business actions call services (users: deactivate)
   urls.py
+  management/commands/  manage.py commands (authn: purge_refresh_tokens)
   internal/             (planned) /internal endpoints for chatty-chat
     views.py
     serializers.py
@@ -126,6 +129,11 @@ Async by default, with explicit sync islands.
 - IDs are `UUIDField(primary_key=True, default=uuid.uuid4)` (D-01). Times are UTC, ISO 8601 in JSON.
 - Custom `users.User` with a UUID primary key is `AUTH_USER_MODEL`. Never reference `auth.User`;
   use `settings.AUTH_USER_MODEL` in models and `get_user_model()` elsewhere.
+- Users are never deleted: deletes cascade through every membership. Deactivate them with
+  `UserService.deactivate` (the admin `deactivate` action), which also revokes their tokens and invites,
+  hands off their teams and, once CHAT-172 lands, publishes `user.deactivated`. Never set
+  `is_active = False` directly.
+- Teams are soft-deleted (`deleted_at`). Team queries filter `deleted_at__isnull=True`.
 - Errors always use the contract body: `{"error": {"code", "message", "fields"?}}`. Codes come from
   `api-core.md`; add new ones there first.
 - Lists that can grow use cursor pagination (`limit` default 50, max 200, `next_cursor`).

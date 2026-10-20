@@ -95,6 +95,7 @@ Not built yet: files, `/internal`, and Redis events (`core.events`).
 | Test | `pytest` |
 | Lint and format | `ruff check . && ruff format .` |
 | Admin user | `python manage.py createsuperuser`, then open `/admin/` |
+| Deactivate a user | `/admin/` → Users → tick them → action "Deactivate selected users". Delete is turned off |
 | New migration | `python manage.py makemigrations && python manage.py migrate` |
 | Purge old tokens | `python manage.py purge_refresh_tokens` (default: older than 30 days) |
 
