@@ -46,14 +46,17 @@ def test_expired_token_older_than_cutoff_is_deleted(user_sync):
     assert not RefreshToken.objects.filter(pk=token.pk).exists()
 
 
-def test_revoked_token_older_than_cutoff_is_deleted(user_sync):
-    future = timezone.now() + timedelta(days=10)
-    old = timezone.now() - timedelta(days=40)
-    token = make_token(user_sync, expires_at=future, revoked_at=old)
+def test_rotated_token_not_expired_is_kept(user_sync):
+    # Reuse detection needs rotated tokens until they expire, whatever --days says
+    token = make_token(
+        user_sync,
+        expires_at=timezone.now() + timedelta(days=29),
+        revoked_at=timezone.now() - timedelta(days=2),
+    )
 
-    call_command("purge_refresh_tokens", "--days=30")
+    call_command("purge_refresh_tokens", "--days=1")
 
-    assert not RefreshToken.objects.filter(pk=token.pk).exists()
+    assert RefreshToken.objects.filter(pk=token.pk).exists()
 
 
 def test_active_recent_token_is_kept(user_sync):

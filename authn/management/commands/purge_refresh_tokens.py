@@ -7,14 +7,14 @@ from authn.repositories import RefreshTokenRepository
 
 
 class Command(BaseCommand):
-    help = "Delete expired or revoked refresh tokens older than N days."
+    help = "Delete refresh tokens that expired more than N days ago."
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--days",
             type=int,
             default=30,
-            help="Purge tokens older than this many days (expires_at or revoked_at, default: 30).",
+            help="Purge tokens that expired more than this many days ago (default: 30).",
         )
         parser.add_argument(
             "--dry-run",
