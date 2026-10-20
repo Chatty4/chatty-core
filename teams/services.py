@@ -363,6 +363,11 @@ class InviteService:
         await InviteRepository.revoke(invite)
 
     @staticmethod
+    async def revoke_all_created_by(user_id: UUID) -> None:
+        """Call after a user is deactivated, so their links stop letting people in."""
+        await InviteRepository.revoke_all_created_by(user_id)
+
+    @staticmethod
     def _check_validity(invite: Invite) -> tuple[bool, str | None]:
         now = timezone.now()
         if invite.revoked_at is not None:

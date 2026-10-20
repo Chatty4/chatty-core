@@ -4,7 +4,7 @@ import pytest
 
 from shared.codes import ErrorCode
 from shared.exceptions import Conflict
-from teams.models import TeamMember
+from teams.models import Invite, TeamMember
 from teams.services import TeamService
 from tests.helpers import make_user
 from users.models import User
@@ -98,3 +98,16 @@ async def test_active_owner_can_demote_deactivated_owner(owner, team):
     await TeamService.change_role(team.id, admin.id, owner.id, ADMIN)
 
     assert await role_of(team, owner) == ADMIN
+
+
+async def test_deactivated_users_invites_are_revoked(owner, team):
+    member = await join(team, MEMBER)
+    theirs = await Invite.objects.acreate(team_id=team.id, created_by=member, code="theirs01")
+    mine = await Invite.objects.acreate(team_id=team.id, created_by=owner, code="mine0001")
+
+    await UserService.deactivate([member.id])
+
+    await theirs.arefresh_from_db()
+    await mine.arefresh_from_db()
+    assert theirs.revoked_at is not None
+    assert mine.revoked_at is None  # other people's links keep working

@@ -250,6 +250,13 @@ class InviteRepository:
         ).update(revoked_at=timezone.now())
 
     @staticmethod
+    async def revoke_all_created_by(user_id: UUID) -> None:
+        """Revoke every invite this user created, in any team, that isn't revoked yet."""
+        await Invite.objects.filter(created_by_id=user_id, revoked_at__isnull=True).aupdate(
+            revoked_at=timezone.now()
+        )
+
+    @staticmethod
     def lock_by_id_sync(invite_id: UUID) -> Invite:
         """Lock the invite row until the transaction ends, and return it."""
         return Invite.objects.select_for_update().get(id=invite_id)
