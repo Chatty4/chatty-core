@@ -1,6 +1,5 @@
 from datetime import datetime
 
-from django.db.models import Q
 from django.utils import timezone
 
 from authn.models import RefreshToken
@@ -26,7 +25,9 @@ class RefreshTokenRepository:
 
     @staticmethod
     def _stale_qs(cutoff: datetime):
-        return RefreshToken.objects.filter(Q(expires_at__lt=cutoff) | Q(revoked_at__lt=cutoff))
+        # Only expiry counts. A rotated token that hasn't expired yet is the proof of theft that
+        # refresh reuse detection needs, so it must not be purged early.
+        return RefreshToken.objects.filter(expires_at__lt=cutoff)
 
     @staticmethod
     async def create(user_id: str, token_hash: str, expires_at: datetime) -> RefreshToken:
@@ -67,6 +68,6 @@ class RefreshTokenRepository:
 
     @staticmethod
     def purge_old(cutoff: datetime) -> int:
-        """Delete tokens that expired or were revoked before cutoff. Returns count deleted."""
+        """Delete tokens that expired before cutoff. Returns count deleted."""
         count, _ = RefreshTokenRepository._stale_qs(cutoff).delete()
         return count
