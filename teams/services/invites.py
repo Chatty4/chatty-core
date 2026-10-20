@@ -65,8 +65,11 @@ class InviteService:
     @staticmethod
     @transaction.atomic
     def _create_sync(team_id: UUID, user_id: UUID, max_age: int, max_uses: int) -> InviteResult:
-        """Lock the team row, enforce the 100-invite cap, then insert."""
-        if InviteRepository.count_active_sync(team_id) >= 100:
+        """Lock the team row, check I'm still a member, enforce the 100-invite cap, then insert."""
+        active = InviteRepository.count_active_sync(team_id)
+        if TeamMemberRepository.get_member_sync(team_id, user_id) is None:
+            raise PermissionDenied(ErrorCode.NOT_A_TEAM_MEMBER)
+        if active >= 100:
             raise Conflict(ErrorCode.INVITE_LIMIT_REACHED)
 
         code = InviteService._unique_code_sync()

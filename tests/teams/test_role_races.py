@@ -9,9 +9,9 @@ from asgiref.sync import sync_to_async
 from django.db import connections
 
 from shared.exceptions import AppError
-from teams.models import Team, TeamMember
+from teams.models import Invite, Team, TeamMember
 from teams.repositories import TeamMemberRepository
-from teams.services import TeamService
+from teams.services import InviteService, TeamService
 from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -125,3 +125,16 @@ async def test_last_owner_can_leave_once_promotion_commits():
     assert results == ("ok", "ok")
     assert await role_of(team, u["bob"]) == OWNER
     assert await role_of(team, u["ana"]) is None
+
+
+async def test_member_removed_while_creating_invite_gets_no_invite():
+    team, u = await setup_team(bob=MEMBER)
+
+    results = await asyncio.to_thread(
+        overlapping,
+        lambda: TeamService._remove_sync(team.id, u["ana"].id, u["bob"].id),
+        lambda: InviteService._create_sync(team.id, u["bob"].id, 0, 0),
+    )
+
+    assert results == ("ok", "not_a_team_member")
+    assert not await Invite.objects.filter(team=team, created_by=u["bob"]).aexists()
