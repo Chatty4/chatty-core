@@ -109,6 +109,31 @@ async def test_join_creates_team_member(async_client, invite, team, joiner, join
     assert member.role == TeamMember.Role.MEMBER
 
 
+async def test_join_clears_leftover_channel_rows(
+    async_client, invite, team, owner, general, joiner, joiner_auth
+):
+    # A channel add that raced with a team removal left this row behind
+    secret = await Channel.objects.acreate(
+        team=team, name="secret", kind=Channel.Kind.PRIVATE, created_by=owner
+    )
+    await ChannelMember.objects.acreate(
+        channel=secret, user=joiner, notify_level=ChannelMember.NotifyLevel.ALL
+    )
+
+    response = await async_client.post(url(invite.code), headers=joiner_auth)
+
+    assert response.status_code == 201
+    assert response.json()["channel_ids"] == [str(general.id)]
+    assert not await ChannelMember.objects.filter(channel=secret, user=joiner).aexists()
+    joined = [
+        cid
+        async for cid in ChannelMember.objects.filter(user=joiner).values_list(
+            "channel_id", flat=True
+        )
+    ]
+    assert joined == [general.id]
+
+
 async def test_join_adds_user_to_default_channel(
     async_client, invite, general, joiner, joiner_auth
 ):

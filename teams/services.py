@@ -424,6 +424,9 @@ class InviteService:
             raise Gone(ErrorCode.INVITE_INVALID, reason)
 
         TeamMemberRepository.create_sync(team=team, user_id=user_id, role=TeamMember.Role.MEMBER)
+        # Rows left from an earlier membership (a channel add that raced with removal) must not
+        # come back. DMs are safe: open_dm adds returning people again.
+        ChannelMemberRepository.delete_in_team_sync(team.id, user_id)
         channel_ids = ChannelRepository.list_default_ids_sync(team.id)
         ChannelMemberRepository.bulk_create_sync(
             channel_ids,
