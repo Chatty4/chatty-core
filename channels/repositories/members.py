@@ -22,6 +22,12 @@ class ChannelMemberRepository:
         return await paginate(qs, ("joined_at", "user_id"), cursor, limit, "channel_members")
 
     @staticmethod
+    async def list_all(channel_id: UUID) -> list[ChannelMember]:
+        """Every member of the channel, in the order they joined. Not paginated."""
+        qs = ChannelMember.objects.filter(channel_id=channel_id).order_by("joined_at", "user_id")
+        return [m async for m in qs]
+
+    @staticmethod
     async def list_for_user_in_teams(team_ids: list[UUID], user_id: UUID) -> list[ChannelMember]:
         """My membership in these teams' channels, each with its channel loaded."""
         qs = (
