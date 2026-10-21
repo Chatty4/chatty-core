@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
@@ -5,11 +6,13 @@ from django.db import transaction
 
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
+from shared import events
 from shared.codes import ErrorCode
+from shared.events import EventType
 from shared.exceptions import Conflict, NotFound, PermissionDenied
 from teams.models import Team, TeamMember
 from teams.repositories import InviteRepository, TeamMemberRepository, TeamRepository
-from teams.schemas import CreateTeamResult, TeamDetailResult, TeamResult
+from teams.schemas import CreateTeamResult, TeamDeleted, TeamDetailResult, TeamResult
 
 MANAGERS = {TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
 
@@ -153,9 +156,10 @@ class TeamService:
 
     @staticmethod
     async def delete(team_id: UUID, user_id: UUID) -> None:
-        """TODO(CHAT-172): publish team.deleted event after commit."""
+        """Soft delete the team. Owners only."""
         team, _ = await TeamService.require_member(team_id, user_id, roles={TeamMember.Role.OWNER})
         await TeamRepository.delete(team)
+        await events.publish(EventType.TEAM_DELETED, asdict(TeamDeleted(team.id)))
 
     @staticmethod
     async def change_role(team_id: UUID, user_id: UUID, target_id: UUID, role: str) -> TeamMember:

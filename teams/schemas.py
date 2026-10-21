@@ -69,3 +69,10 @@ class JoinTeamResult:
     role: str
     already_member: bool
     channel_ids: list[UUID]
+
+
+@dataclass(frozen=True)
+class TeamDeleted:
+    """team.deleted data."""
+
+    team_id: UUID
