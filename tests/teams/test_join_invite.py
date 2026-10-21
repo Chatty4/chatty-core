@@ -12,6 +12,7 @@ from shared.events import EventType
 from shared.exceptions import NotFound
 from shared.redis import clear_rate_limit, get_redis_client
 from teams.models import Invite, Team, TeamMember
+from teams.schemas import TeamMemberAction, TeamMemberChanged
 from teams.services import InviteService
 from users.models import User
 
@@ -116,7 +117,7 @@ async def test_join_records_the_invite(async_client, invite, team, joiner, joine
     await async_client.post(url(invite.code), headers=joiner_auth)
 
     member = await TeamMember.objects.aget(team=team, user=joiner)
-    assert member.invite_id == invite.id
+    assert member.invite_id == invite.id  # type: ignore[attr-defined]
 
 
 async def test_join_clears_leftover_channel_rows(
@@ -443,3 +444,21 @@ async def test_join_as_member_publishes_no_membership(async_client, invite, owne
     await async_client.post(url(invite.code), headers=owner_auth)
 
     assert [t for t, _ in published if t == EventType.MEMBERSHIP_CHANGED] == []
+
+
+# --- team.member.changed event ---
+
+
+async def test_join_publishes_joined(async_client, invite, team, joiner, joiner_auth, published):
+    await async_client.post(url(invite.code), headers=joiner_auth)
+
+    joined = [d for t, d in published if t == EventType.TEAM_MEMBER_CHANGED]
+    assert joined == [
+        asdict(TeamMemberChanged(joiner.id, team.id, TeamMemberAction.JOINED, "member"))
+    ]
+
+
+async def test_join_as_member_publishes_no_team_event(async_client, invite, owner_auth, published):
+    await async_client.post(url(invite.code), headers=owner_auth)
+
+    assert [t for t, _ in published if t == EventType.TEAM_MEMBER_CHANGED] == []

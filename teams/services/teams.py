@@ -13,7 +13,14 @@ from shared.events import EventType
 from shared.exceptions import Conflict, NotFound, PermissionDenied
 from teams.models import Team, TeamMember
 from teams.repositories import InviteRepository, TeamMemberRepository, TeamRepository
-from teams.schemas import CreateTeamResult, TeamDeleted, TeamDetailResult, TeamResult
+from teams.schemas import (
+    CreateTeamResult,
+    TeamDeleted,
+    TeamDetailResult,
+    TeamMemberAction,
+    TeamMemberChanged,
+    TeamResult,
+)
 
 MANAGERS = {TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
 
@@ -165,7 +172,16 @@ class TeamService:
     @staticmethod
     async def change_role(team_id: UUID, user_id: UUID, target_id: UUID, role: str) -> TeamMember:
         await TeamService.require_member(team_id, user_id, roles=MANAGERS)
-        return await sync_to_async(TeamService._change_role_sync)(team_id, user_id, target_id, role)
+        target = await sync_to_async(TeamService._change_role_sync)(
+            team_id, user_id, target_id, role
+        )
+        await events.publish(
+            EventType.TEAM_MEMBER_CHANGED,
+            asdict(
+                TeamMemberChanged(target_id, team_id, TeamMemberAction.ROLE_CHANGED, target.role)
+            ),
+        )
+        return target
 
     @staticmethod
     @transaction.atomic
@@ -184,7 +200,6 @@ class TeamService:
             raise Conflict(ErrorCode.LAST_OWNER)
 
         TeamMemberRepository.update_role_sync(target, role)
-        # TODO(CHAT-172): publish team.member.changed (role_changed) after commit
 
         return target
 
@@ -194,6 +209,10 @@ class TeamService:
         if target_id == user_id:
             raise Conflict(ErrorCode.USE_LEAVE)
         changes = await sync_to_async(TeamService._remove_sync)(team_id, user_id, target_id)
+        await events.publish(
+            EventType.TEAM_MEMBER_CHANGED,
+            asdict(TeamMemberChanged(target_id, team_id, TeamMemberAction.REMOVED, None)),
+        )
         for change in changes:
             await events.publish(EventType.MEMBERSHIP_CHANGED, asdict(change))
 
@@ -232,14 +251,17 @@ class TeamService:
         ChannelMemberRepository.delete_in_team_sync(team_id, user_id)
         TeamMemberRepository.delete_sync(team_id, user_id)
         InviteRepository.revoke_created_by_sync(team_id, user_id)
-        # TODO(CHAT-172): publish team.member.changed (removed) after commit.
         return changes
 
     @staticmethod
     async def leave(team_id: UUID, user_id: UUID) -> None:
-        """TODO(CHAT-172): publish team.member.changed (left) after commit."""
+        """Leave the team and all its channels. The last owner can't leave."""
         await TeamService.require_member(team_id, user_id)
         changes = await sync_to_async(TeamService._leave_sync)(team_id, user_id)
+        await events.publish(
+            EventType.TEAM_MEMBER_CHANGED,
+            asdict(TeamMemberChanged(user_id, team_id, TeamMemberAction.LEFT, None)),
+        )
         for change in changes:
             await events.publish(EventType.MEMBERSHIP_CHANGED, asdict(change))
 
@@ -257,16 +279,28 @@ class TeamService:
     async def hand_off_ownership(user_id: UUID) -> None:
         """Call after a user is deactivated, so none of their teams is left without an active
         owner."""
-        await sync_to_async(TeamService._hand_off_ownership_sync)(user_id)
+        changes = await sync_to_async(TeamService._hand_off_ownership_sync)(user_id)
+        for change in changes:
+            await events.publish(EventType.TEAM_MEMBER_CHANGED, asdict(change))
 
     @staticmethod
     @transaction.atomic
-    def _hand_off_ownership_sync(user_id: UUID) -> None:
+    def _hand_off_ownership_sync(user_id: UUID) -> list[TeamMemberChanged]:
         """In each team the user owns that has no active owner left, the admin who joined first
-        becomes owner, or else the member who joined first. The user keeps their own role."""
+        becomes owner, or else the member who joined first. The user keeps their own role.
+        Returns the events to publish once the transaction has committed."""
+        changes = []
         for team_id in TeamMemberRepository.list_owned_team_ids_sync(user_id):
             TeamRepository.lock_sync(team_id)
             first = TeamMemberRepository.first_active_by_rank_sync(team_id)
             if first is not None and first.role != TeamMember.Role.OWNER:
                 TeamMemberRepository.update_role_sync(first, TeamMember.Role.OWNER)
-                # TODO(CHAT-172): publish team.member.changed (role_changed) after commit
+                changes.append(
+                    TeamMemberChanged(
+                        first.user_id,  # type: ignore[attr-defined]
+                        team_id,
+                        TeamMemberAction.ROLE_CHANGED,
+                        TeamMember.Role.OWNER,
+                    )
+                )
+        return changes

@@ -22,6 +22,8 @@ from teams.schemas import (
     InviteLookupResult,
     InviteResult,
     JoinTeamResult,
+    TeamMemberAction,
+    TeamMemberChanged,
     TeamPreview,
 )
 from teams.services.teams import MANAGERS, TeamService
@@ -165,6 +167,13 @@ class InviteService:
         await InviteService._limit_code_guesses(ip)
         invite = await InviteService._get_invite_or_404(code)
         result = await sync_to_async(InviteService._join_sync)(invite.id, invite.team, user_id)
+        if not result.already_member:
+            await events.publish(
+                EventType.TEAM_MEMBER_CHANGED,
+                asdict(
+                    TeamMemberChanged(user_id, result.team_id, TeamMemberAction.JOINED, result.role)
+                ),
+            )
         for channel_id in result.channel_ids:  # empty when already a member
             await events.publish(
                 EventType.MEMBERSHIP_CHANGED,
@@ -207,8 +216,6 @@ class InviteService:
             notify_level=ChannelMember.NotifyLevel.MENTIONS,
         )
         InviteRepository.increment_uses_sync(invite)
-
-        # TODO(CHAT-172): on_commit publish team.member.changed (joined)
 
         return JoinTeamResult(
             team_id=team.id,

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from uuid import UUID
 
 
@@ -76,3 +77,20 @@ class TeamDeleted:
     """team.deleted data."""
 
     team_id: UUID
+
+
+class TeamMemberAction(StrEnum):
+    JOINED = "joined"
+    LEFT = "left"
+    REMOVED = "removed"
+    ROLE_CHANGED = "role_changed"
+
+
+@dataclass(frozen=True)
+class TeamMemberChanged:
+    """team.member.changed data. role is the role after the change, None when left or removed."""
+
+    user_id: UUID
+    team_id: UUID
+    action: TeamMemberAction
+    role: str | None
