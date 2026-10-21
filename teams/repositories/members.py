@@ -55,6 +55,14 @@ class TeamMemberRepository:
         )
 
     @staticmethod
+    async def list_for_user(user_id: UUID) -> list[TeamMember]:
+        """The user's memberships in live teams, oldest first."""
+        qs = TeamMember.objects.filter(user_id=user_id, team__deleted_at__isnull=True).order_by(
+            "joined_at"
+        )
+        return [m async for m in qs]
+
+    @staticmethod
     def first_active_by_rank_sync(team_id: UUID) -> TeamMember | None:
         """The team's first active member by role (owner, then admin, then member), then by who
         joined first. None when nobody in the team is active."""
