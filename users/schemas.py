@@ -27,3 +27,10 @@ class Memberships:
     is_active: bool
     teams: list[TeamMembership]
     channels: list[ChannelMember]
+
+
+@dataclass(frozen=True)
+class UserDeactivated:
+    """user.deactivated data."""
+
+    user_id: UUID

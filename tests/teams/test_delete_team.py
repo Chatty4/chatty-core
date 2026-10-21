@@ -1,9 +1,13 @@
+from dataclasses import asdict
+
 import pytest
 from asgiref.sync import sync_to_async
 from django.utils import timezone
 
 from authn.services import AuthnService
+from shared.events import EventType
 from teams.models import Team, TeamMember
+from teams.schemas import TeamDeleted
 from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -133,3 +137,37 @@ async def test_delete_team_inactive_user(async_client, owner, team, auth):
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "user_inactive"
+
+
+# --- team.deleted event ---
+
+
+async def test_delete_team_publishes_team_deleted(async_client, team, auth, published):
+    await async_client.delete(url(team.id), headers=auth)
+
+    assert published == [(EventType.TEAM_DELETED, asdict(TeamDeleted(team.id)))]
+
+
+async def test_delete_already_deleted_team_publishes_nothing(async_client, team, auth, published):
+    await async_client.delete(url(team.id), headers=auth)
+    published.clear()
+
+    response = await async_client.delete(url(team.id), headers=auth)
+
+    assert response.status_code == 404
+    assert published == []
+
+
+async def test_forbidden_delete_publishes_nothing(async_client, team, published):
+    admin = await sync_to_async(User.objects.create_user)(
+        email="bob@example.com", display_name="Bob", password="correct horse battery"
+    )
+    await TeamMember.objects.acreate(team=team, user=admin, role=TeamMember.Role.ADMIN)
+    tokens = await AuthnService().issue_tokens(admin)
+
+    response = await async_client.delete(
+        url(team.id), headers={"Authorization": f"Bearer {tokens.access_token}"}
+    )
+
+    assert response.status_code == 403
+    assert published == []

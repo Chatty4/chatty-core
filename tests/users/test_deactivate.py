@@ -1,8 +1,12 @@
+from dataclasses import asdict
+
 import pytest
 
 from authn.models import RefreshToken
 from authn.services import AuthnService
+from shared.events import EventType
 from users.models import User
+from users.schemas import UserDeactivated
 from users.services import UserService
 
 # transaction=True: same reason as test_register.py (writes go through another DB connection)
@@ -97,3 +101,28 @@ async def test_deactivate_cleans_tokens_of_already_inactive_user():
 
     assert deactivated == []  # no new deactivation, so no future event
     assert await live_tokens(user) == 0
+
+
+# --- user.deactivated event ---
+
+
+async def test_deactivate_publishes_only_for_users_that_were_active(published):
+    active = await make_user("a@example.com")
+    inactive = await make_user("b@example.com", is_active=False)
+
+    await UserService.deactivate([active.id, inactive.id])
+
+    deactivations = [e for e in published if e[0] == EventType.USER_DEACTIVATED]
+    assert deactivations == [(EventType.USER_DEACTIVATED, asdict(UserDeactivated(active.id)))]
+
+
+async def test_admin_action_publishes_user_deactivated(async_client, published):
+    staff = await make_user("admin@example.com", is_staff=True)
+    target = await make_user("ana@example.com")
+    await async_client.aforce_login(staff)
+
+    await async_client.post(
+        CHANGELIST, {"action": "deactivate", "_selected_action": [str(target.id)]}
+    )
+
+    assert (EventType.USER_DEACTIVATED, asdict(UserDeactivated(target.id))) in published

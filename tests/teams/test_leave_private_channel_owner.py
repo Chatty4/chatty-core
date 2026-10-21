@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from datetime import timedelta
 
 import pytest
@@ -5,6 +6,8 @@ from asgiref.sync import sync_to_async
 from django.utils import timezone
 
 from channels.models import Channel, ChannelMember
+from channels.schemas import MembershipAction, MembershipChanged
+from shared.events import EventType
 from teams.models import TeamMember
 from teams.services import TeamService
 from users.models import User
@@ -85,3 +88,14 @@ async def test_leaving_empty_private_channel_is_fine(setup):
     await TeamService.leave(team.id, u["ana"].id)
 
     assert not await ChannelMember.objects.filter(channel=alone).aexists()
+
+
+async def test_leaving_team_publishes_hand_off(setup, published):
+    team, secret, u = setup
+
+    await TeamService.leave(team.id, u["ana"].id)
+
+    memberships = [d for t, d in published if t == EventType.MEMBERSHIP_CHANGED]
+    assert memberships == [
+        asdict(MembershipChanged(u["bob"].id, secret.id, team.id, MembershipAction.SETTINGS))
+    ]

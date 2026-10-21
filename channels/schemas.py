@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import StrEnum
 from uuid import UUID
 
 from channels.models import Channel, ChannelMember
@@ -43,3 +44,40 @@ class InternalChannel:
 
     channel: Channel  # with its team loaded
     members: list[ChannelMember]
+
+
+@dataclass(frozen=True)
+class ChannelUpdated:
+    """channel.updated data: name, topic and archived every time, not only what changed."""
+
+    channel_id: UUID
+    team_id: UUID
+    name: str
+    topic: str | None
+    archived: bool
+
+    @classmethod
+    def of(cls, channel: Channel) -> ChannelUpdated:
+        return cls(
+            channel_id=channel.id,
+            team_id=channel.team_id,  # type: ignore[attr-defined]
+            name=channel.name,
+            topic=channel.topic or None,
+            archived=channel.archived_at is not None,
+        )
+
+
+class MembershipAction(StrEnum):
+    ADDED = "added"
+    REMOVED = "removed"
+    SETTINGS = "settings"
+
+
+@dataclass(frozen=True)
+class MembershipChanged:
+    """membership.changed data."""
+
+    user_id: UUID
+    channel_id: UUID
+    team_id: UUID
+    action: MembershipAction

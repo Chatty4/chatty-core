@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from typing import Literal
 from uuid import UUID
 
@@ -7,8 +8,19 @@ from django.db import IntegrityError, transaction
 from channels import access
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
-from channels.schemas import ChannelAccess, ChannelDetail, DMResult, InternalChannel, MyChannel
+from channels.schemas import (
+    ChannelAccess,
+    ChannelDetail,
+    ChannelUpdated,
+    DMResult,
+    InternalChannel,
+    MembershipAction,
+    MembershipChanged,
+    MyChannel,
+)
+from shared import events
 from shared.codes import ErrorCode
+from shared.events import EventType
 from shared.exceptions import BadRequest, Conflict, NotFound, PermissionDenied, ValidationFailed
 from teams.models import Team
 from teams.repositories import TeamMemberRepository
@@ -51,11 +63,16 @@ class ChannelService:
     async def create(team_id: UUID, user_id: UUID, name: str, kind: str, topic: str) -> Channel:
         team, _ = await TeamService.require_member(team_id, user_id)
         try:
-            return await sync_to_async(ChannelService._create_sync)(
+            channel = await sync_to_async(ChannelService._create_sync)(
                 team, user_id, name, kind, topic
             )
         except IntegrityError:  # unique_channel_name_per_team, also when two requests race
             raise Conflict(ErrorCode.CHANNEL_NAME_TAKEN) from None
+        await events.publish(
+            EventType.MEMBERSHIP_CHANGED,
+            asdict(MembershipChanged(user_id, channel.id, team.id, MembershipAction.ADDED)),
+        )
+        return channel
 
     @staticmethod
     @transaction.atomic
@@ -69,7 +86,6 @@ class ChannelService:
             role=ChannelMember.Role.OWNER,
             notify_level=ChannelMember.NotifyLevel.MENTIONS,
         )
-        # TODO(CHAT-172): publish membership.changed (added) after commit
         return channel
 
     @staticmethod
@@ -134,7 +150,9 @@ class ChannelService:
             )
         except IntegrityError:  # unique_channel_name_per_team, also when two renames race
             raise Conflict(ErrorCode.CHANNEL_NAME_TAKEN) from None
-        # TODO(CHAT-172): publish channel.updated after commit
+
+        await events.publish(EventType.CHANNEL_UPDATED, asdict(ChannelUpdated.of(channel)))
+
         member_count = await ChannelMemberRepository.count(channel_id)
         return ChannelDetail(channel, member_count, access.channel_member)
 
@@ -143,7 +161,6 @@ class ChannelService:
         channel_id: UUID, user_id: UUID, notify_level: str, muted: bool, hidden: bool
     ) -> ChannelMember:
         """My notification settings for a channel. Hidden is only for DMs."""
-        # TODO(CHAT-172): publish membership.changed (settings) after commit.
         access = await ChannelService.require_access(channel_id, user_id, "member")
         member = access.channel_member
         assert member is not None  # require_access("member") raised otherwise
@@ -151,7 +168,16 @@ class ChannelService:
         if hidden and access.channel.kind != Channel.Kind.DM:
             raise ValidationFailed(fields={"hidden": "invalid"})
 
-        return await ChannelMemberRepository.update_settings(member, notify_level, muted, hidden)
+        member = await ChannelMemberRepository.update_settings(member, notify_level, muted, hidden)
+        await events.publish(
+            EventType.MEMBERSHIP_CHANGED,
+            asdict(
+                MembershipChanged(
+                    user_id, channel_id, access.channel.team.id, MembershipAction.SETTINGS
+                )
+            ),
+        )
+        return member
 
     @staticmethod
     async def archive(channel_id: UUID, user_id: UUID) -> ChannelDetail:
@@ -161,7 +187,8 @@ class ChannelService:
             raise BadRequest(ErrorCode.CANNOT_ARCHIVE_DEFAULT)
         if channel.archived_at is None:  # not archived yet. if it already is, return 200
             channel = await ChannelRepository.archive(channel)
-            # TODO(CHAT-172): publish channel.updated (archived: true) after commit
+            await events.publish(EventType.CHANNEL_UPDATED, asdict(ChannelUpdated.of(channel)))
+
         member_count = await ChannelMemberRepository.count(channel_id)
         return ChannelDetail(channel, member_count, access.channel_member)
 
@@ -175,29 +202,45 @@ class ChannelService:
             raise PermissionDenied(ErrorCode.CANNOT_JOIN_PRIVATE)
         if channel.archived_at is not None:
             raise Conflict(ErrorCode.CHANNEL_ARCHIVED)
-        # TODO(CHAT-172): publish membership.changed (added) after commit, only when newly created
 
-        return await ChannelMemberRepository.get_or_create(
+        member, created = await ChannelMemberRepository.get_or_create(
             channel_id, user_id, ChannelMember.NotifyLevel.MENTIONS
         )
+        if created:
+            await events.publish(
+                EventType.MEMBERSHIP_CHANGED,
+                asdict(
+                    MembershipChanged(user_id, channel_id, channel.team.id, MembershipAction.ADDED)
+                ),
+            )
+        return member
 
     @staticmethod
     async def leave(channel_id: UUID, user_id: UUID) -> None:
         access = await ChannelService.require_access(channel_id, user_id, "member")
         if access.channel.kind == Channel.Kind.DM:
             raise BadRequest(ErrorCode.CANNOT_LEAVE_DM)
-        await sync_to_async(ChannelService._leave_sync)(access.channel, user_id)
+        changes = await sync_to_async(ChannelService._leave_sync)(access.channel, user_id)
+        for change in changes:
+            await events.publish(EventType.MEMBERSHIP_CHANGED, asdict(change))
 
     @staticmethod
     @transaction.atomic
-    def _leave_sync(channel: Channel, user_id: UUID) -> None:
-        """The owner lock stops two owners leaving at once from both skipping the hand-off."""
+    def _leave_sync(channel: Channel, user_id: UUID) -> list[MembershipChanged]:
+        """The owner lock stops two owners leaving at once from both skipping the hand-off.
+        Returns the events to publish once the transaction has committed."""
+        team_id = channel.team_id  # type: ignore[attr-defined]
         owner_ids = ChannelMemberRepository.lock_owner_ids_sync(channel.id)
         ChannelMemberRepository.delete_sync(channel.id, user_id)
+        changes = [MembershipChanged(user_id, channel.id, team_id, MembershipAction.REMOVED)]
         # hand off when no active owner other than the one leaving is left
         if channel.kind == Channel.Kind.PRIVATE and set(owner_ids) <= {user_id}:
-            ChannelMemberRepository.promote_first_joined_sync(channel.id)
-        # TODO(CHAT-172): publish membership.changed (removed) after commit
+            promoted = ChannelMemberRepository.promote_first_joined_sync(channel.id)
+            if promoted is not None:
+                changes.append(
+                    MembershipChanged(promoted, channel.id, team_id, MembershipAction.SETTINGS)
+                )
+        return changes
 
     @staticmethod
     async def add_members(
@@ -216,7 +259,15 @@ class ChannelService:
         added = await ChannelMemberRepository.add_many(
             channel_id, user_ids, ChannelMember.NotifyLevel.MENTIONS
         )
-        # TODO(CHAT-172): publish membership.changed (added) for each id in 'added' after commit
+        for added_id in added:
+            await events.publish(
+                EventType.MEMBERSHIP_CHANGED,
+                asdict(
+                    MembershipChanged(
+                        added_id, channel_id, access.channel.team.id, MembershipAction.ADDED
+                    )
+                ),
+            )
 
         return added, [uid for uid in user_ids if uid not in added]
 
@@ -228,7 +279,9 @@ class ChannelService:
         if await ChannelMemberRepository.get_member(channel_id, target_id) is None:
             raise NotFound(ErrorCode.MEMBER_NOT_FOUND)
         # same as leave: removing the last owner of a private channel hands it off too
-        await sync_to_async(ChannelService._leave_sync)(access.channel, target_id)
+        changes = await sync_to_async(ChannelService._leave_sync)(access.channel, target_id)
+        for change in changes:
+            await events.publish(EventType.MEMBERSHIP_CHANGED, asdict(change))
 
     @staticmethod
     async def open_dm(team_id: UUID, user_id: UUID, user_ids: list[UUID]) -> DMResult:
@@ -259,10 +312,16 @@ class ChannelService:
                 if channel is None:  # can't happen: DMs are never deleted
                     raise
 
+        added = member_ids  # a new DM: everyone was added
         if not created:
             # people who left the team lost their DM membership; they get it back
-            await ChannelMemberRepository.add_many(
+            added = await ChannelMemberRepository.add_many(
                 channel.id, member_ids, ChannelMember.NotifyLevel.ALL
+            )
+        for added_id in added:
+            await events.publish(
+                EventType.MEMBERSHIP_CHANGED,
+                asdict(MembershipChanged(added_id, channel.id, team_id, MembershipAction.ADDED)),
             )
 
         ids = await ChannelMemberRepository.member_ids_by_channel([channel.id])
@@ -288,7 +347,5 @@ class ChannelService:
                 role=ChannelMember.Role.MEMBER,
                 notify_level=ChannelMember.NotifyLevel.ALL,
             )
-
-        # TODO(CHAT-172): publish membership.changed (added) for each member after commit
 
         return channel

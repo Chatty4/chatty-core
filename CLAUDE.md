@@ -144,8 +144,14 @@ Async by default, with explicit sync islands.
   misses a row another transaction just changed to match (a member just promoted to owner).
 - Never call a sync ORM method from async code (Django raises `SynchronousOnlyOperation`).
   Watch for hidden queries: accessing a foreign key that wasn't loaded (`member.user.email`) is a sync query.
-- Redis events are published only after commit: `transaction.on_commit(lambda: publish(...))`.
-  If publishing fails, log it and let the request succeed (D-08).
+- Redis events (`core.events`, see `shared/events.py`) are published only after commit, from the async
+  service. A `@transaction.atomic` `_sync` function returns the events it produced (dataclasses in the
+  app's `schemas.py`, e.g. `MembershipChanged`), and the async caller publishes them once
+  `sync_to_async` returns: `await events.publish(EventType.X, asdict(event))`. A write without a
+  transaction publishes right after its `await`. Don't use `transaction.on_commit`: its callbacks run in
+  the shared sync thread, and `publish` is async. Call it through the module (`from shared import events`)
+  so the autouse `published` test fixture records every call. If publishing fails, `publish` logs it and
+  the request still succeeds (D-08).
 - External I/O uses async clients (`redis.asyncio`, `httpx.AsyncClient`). Blocking SDKs (e.g. the MinIO
   client) are wrapped in `sync_to_async`.
 
@@ -182,6 +188,10 @@ Async by default, with explicit sync islands.
   the test database can't be dropped. Keep it.
 - Shared test helpers (`make_user`, `headers_for`) live in `tests/helpers.py`; import them, don't copy them.
   Fixtures stay in `conftest.py`.
+- No test sends events to Redis: the autouse `published` fixture replaces `events.publish` and records
+  `(event_type, data)`. Ask for `published` to check them, e.g.
+  `assert published == [(EventType.TEAM_DELETED, asdict(TeamDeleted(team.id)))]`. A test that needs the
+  real Redis sets `shared.events.publish` back to the real function (see `test_core_events_redis.py`).
 - Run one `pytest` at a time: every run uses the same test database (`test_core_db`), so two runs at once
   break each other's setup. After an interrupted run, `pytest --create-db` rebuilds it.
 - Test services directly for business rules, and views for status codes and response shapes from the contract.

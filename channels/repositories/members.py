@@ -70,15 +70,14 @@ class ChannelMemberRepository:
         )
 
     @staticmethod
-    async def get_or_create(channel_id: UUID, user_id: UUID, notify_level: str) -> ChannelMember:
-        """
-        The user's membership, created as a plain member if missing.
-        Safe when two requests race.
-        """
-        member, _ = await ChannelMember.objects.aget_or_create(
+    async def get_or_create(
+        channel_id: UUID, user_id: UUID, notify_level: str
+    ) -> tuple[ChannelMember, bool]:
+        """The user's membership, created as a plain member if missing, and whether it was
+        created. Safe when two requests race."""
+        return await ChannelMember.objects.aget_or_create(
             channel_id=channel_id, user_id=user_id, defaults={"notify_level": notify_level}
         )
-        return member
 
     @staticmethod
     async def add_many(channel_id: UUID, user_ids: list[UUID], notify_level: str) -> list[UUID]:
@@ -126,17 +125,19 @@ class ChannelMemberRepository:
         return member
 
     @staticmethod
-    def promote_first_joined_sync(channel_id: UUID) -> None:
-        """Make the active member who joined first the owner. No-op when no active member is
-        left."""
+    def promote_first_joined_sync(channel_id: UUID) -> UUID | None:
+        """Make the active member who joined first the owner, and return their user id. None when
+        no active member is left."""
         first = (
             ChannelMember.objects.filter(channel_id=channel_id, user__is_active=True)
             .order_by("joined_at", "user_id")
             .first()
         )
-        if first:
-            first.role = ChannelMember.Role.OWNER
-            first.save(update_fields=["role"])
+        if first is None:
+            return None
+        first.role = ChannelMember.Role.OWNER
+        first.save(update_fields=["role"])
+        return first.user_id  # type: ignore[attr-defined]
 
     @staticmethod
     def delete_sync(channel_id: UUID, user_id: UUID) -> None:
