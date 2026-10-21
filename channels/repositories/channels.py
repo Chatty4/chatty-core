@@ -19,6 +19,13 @@ class ChannelRepository:
         )
 
     @staticmethod
+    async def get_with_team_including_deleted(channel_id: UUID) -> Channel | None:
+        """
+        The channel with its team loaded, or None.
+        Unlike get_with_team, a channel whose team was deleted is returned too."""
+        return await Channel.objects.filter(id=channel_id).select_related("team").afirst()
+
+    @staticmethod
     async def find_dm(team_id: UUID, dm_key: str) -> Channel | None:
         """The team's DM between exactly these people, or None."""
         return await Channel.objects.filter(

@@ -35,3 +35,11 @@ class DMResult:
     channel: Channel
     member_ids: list[UUID]
     created: bool  # False when the DM already existed (200 instead of 201)
+
+
+@dataclass
+class InternalChannel:
+    """One channel with all its members, for chatty-chat (GET /internal/channels/{id})."""
+
+    channel: Channel  # with its team loaded
+    members: list[ChannelMember]

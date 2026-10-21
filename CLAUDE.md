@@ -64,7 +64,8 @@ authn/                  refresh token model, RS256 JWT issuance, rotation and re
   urls.py
   management/commands/  manage.py commands (authn: purge_refresh_tokens)
   internal/             /internal endpoints for chatty-chat, mounted in config/urls.py under
-                        "internal/" (users: GET /internal/users/{user_id}/memberships)
+                        "internal/" (users: GET /internal/users/{user_id}/memberships,
+                        channels: GET /internal/channels/{channel_id})
     views.py            InternalAPIView subclasses (X-Service-Token, no user)
     serializers.py
     urls.py

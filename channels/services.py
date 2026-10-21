@@ -7,7 +7,7 @@ from django.db import IntegrityError, transaction
 from channels import access
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
-from channels.schemas import ChannelAccess, ChannelDetail, DMResult, MyChannel
+from channels.schemas import ChannelAccess, ChannelDetail, DMResult, InternalChannel, MyChannel
 from shared.codes import ErrorCode
 from shared.exceptions import BadRequest, Conflict, NotFound, PermissionDenied, ValidationFailed
 from teams.models import Team
@@ -107,6 +107,18 @@ class ChannelService:
     ) -> tuple[list[ChannelMember], str | None]:
         await ChannelService.require_access(channel_id, user_id, "read")
         return await ChannelMemberRepository.page(channel_id, cursor, limit)
+
+    @staticmethod
+    async def get_internal(channel_id: UUID) -> InternalChannel:
+        """
+        The channel and every member, for chatty-chat. No access check: the caller is the
+        service, not a user. A channel of a deleted team is returned, not hidden.
+        """
+        channel = await ChannelRepository.get_with_team_including_deleted(channel_id)
+        if channel is None:
+            raise NotFound(ErrorCode.CHANNEL_NOT_FOUND)
+        members = await ChannelMemberRepository.list_all(channel_id)
+        return InternalChannel(channel, members)
 
     @staticmethod
     async def update(
