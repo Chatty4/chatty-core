@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from typing import Literal
 from uuid import UUID
 
@@ -7,8 +8,17 @@ from django.db import IntegrityError, transaction
 from channels import access
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
-from channels.schemas import ChannelAccess, ChannelDetail, DMResult, InternalChannel, MyChannel
+from channels.schemas import (
+    ChannelAccess,
+    ChannelDetail,
+    ChannelUpdated,
+    DMResult,
+    InternalChannel,
+    MyChannel,
+)
+from shared import events
 from shared.codes import ErrorCode
+from shared.events import EventType
 from shared.exceptions import BadRequest, Conflict, NotFound, PermissionDenied, ValidationFailed
 from teams.models import Team
 from teams.repositories import TeamMemberRepository
@@ -134,7 +144,9 @@ class ChannelService:
             )
         except IntegrityError:  # unique_channel_name_per_team, also when two renames race
             raise Conflict(ErrorCode.CHANNEL_NAME_TAKEN) from None
-        # TODO(CHAT-172): publish channel.updated after commit
+
+        await events.publish(EventType.CHANNEL_UPDATED, asdict(ChannelUpdated.of(channel)))
+
         member_count = await ChannelMemberRepository.count(channel_id)
         return ChannelDetail(channel, member_count, access.channel_member)
 
@@ -161,7 +173,8 @@ class ChannelService:
             raise BadRequest(ErrorCode.CANNOT_ARCHIVE_DEFAULT)
         if channel.archived_at is None:  # not archived yet. if it already is, return 200
             channel = await ChannelRepository.archive(channel)
-            # TODO(CHAT-172): publish channel.updated (archived: true) after commit
+            await events.publish(EventType.CHANNEL_UPDATED, asdict(ChannelUpdated.of(channel)))
+
         member_count = await ChannelMemberRepository.count(channel_id)
         return ChannelDetail(channel, member_count, access.channel_member)
 

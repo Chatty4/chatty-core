@@ -1,10 +1,13 @@
 import uuid
+from dataclasses import asdict
 from datetime import timedelta
 
 import pytest
 from django.utils import timezone
 
 from channels.models import Channel, ChannelMember
+from channels.schemas import ChannelUpdated
+from shared.events import EventType
 from teams.models import TeamMember
 from teams.services import TeamService
 from tests.helpers import headers_for, make_user
@@ -111,3 +114,24 @@ async def test_missing_channel_is_404(async_client, owner):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "channel_not_found"
+
+
+# --- channel.updated event ---
+
+
+async def test_archive_publishes_channel_updated(async_client, team, owner, secret, published):
+    await archive(async_client, secret.id, owner)
+
+    assert published == [
+        (
+            EventType.CHANNEL_UPDATED,
+            asdict(ChannelUpdated(secret.id, team.id, "secret", None, True)),
+        )
+    ]
+
+
+async def test_archiving_twice_publishes_once(async_client, owner, secret, published):
+    await archive(async_client, secret.id, owner)
+    await archive(async_client, secret.id, owner)
+
+    assert len(published) == 1

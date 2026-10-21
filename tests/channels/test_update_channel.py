@@ -1,9 +1,12 @@
 import uuid
+from dataclasses import asdict
 
 import pytest
 from django.utils import timezone
 
 from channels.models import Channel, ChannelMember
+from channels.schemas import ChannelUpdated
+from shared.events import EventType
 from teams.models import TeamMember
 from teams.services import TeamService
 from tests.helpers import headers_for, make_user
@@ -129,3 +132,37 @@ async def test_missing_channel_is_404(async_client, owner):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "channel_not_found"
+
+
+# --- channel.updated event ---
+
+
+async def test_rename_publishes_channel_updated(async_client, team, member, secret, published):
+    await add_to(secret.id, member, ChannelMember.Role.OWNER)
+
+    await update(async_client, secret.id, member, {"name": "releases", "topic": "Notes"})
+
+    assert published == [
+        (
+            EventType.CHANNEL_UPDATED,
+            asdict(ChannelUpdated(secret.id, team.id, "releases", "Notes", False)),
+        )
+    ]
+
+
+async def test_empty_topic_is_published_as_null(async_client, member, secret, published):
+    await add_to(secret.id, member, ChannelMember.Role.OWNER)
+
+    await update(async_client, secret.id, member, {"name": "secret", "topic": ""})
+
+    assert published[0][1]["topic"] is None
+
+
+async def test_failed_rename_publishes_nothing(async_client, team, member, secret, published):
+    await Channel.objects.acreate(team_id=team.id, name="taken", kind=Channel.Kind.PUBLIC)
+    await add_to(secret.id, member, ChannelMember.Role.OWNER)
+
+    response = await update(async_client, secret.id, member, {"name": "taken"})
+
+    assert response.status_code == 409
+    assert published == []
