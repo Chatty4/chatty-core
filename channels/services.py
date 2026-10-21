@@ -82,7 +82,7 @@ class ChannelService:
     async def list_mine(team_id: UUID, user_id: UUID) -> list[MyChannel]:
         """The sidebar: every channel and DM I'm in, hidden DMs included"""
         await TeamService.require_member(team_id, user_id)
-        memberships = await ChannelMemberRepository.list_for_user_in_team(team_id, user_id)
+        memberships = await ChannelMemberRepository.list_for_user_in_teams([team_id], user_id)
         dm_ids = [m.channel.id for m in memberships if m.channel.kind == Channel.Kind.DM]
         dm_members = await ChannelMemberRepository.member_ids_by_channel(dm_ids)
         return [

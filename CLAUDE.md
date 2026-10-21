@@ -63,8 +63,9 @@ authn/                  refresh token model, RS256 JWT issuance, rotation and re
   admin.py              Django admin; business actions call services (users: deactivate)
   urls.py
   management/commands/  manage.py commands (authn: purge_refresh_tokens)
-  internal/             (planned) /internal endpoints for chatty-chat
-    views.py
+  internal/             /internal endpoints for chatty-chat, mounted in config/urls.py under
+                        "internal/" (users: GET /internal/users/{user_id}/memberships)
+    views.py            InternalAPIView subclasses (X-Service-Token, no user)
     serializers.py
     urls.py
   migrations/
@@ -98,7 +99,8 @@ Calls go one way only: `views -> services -> repositories -> models`.
 - **repositories**: small, named query functions (`get_team_member(team_id, user_id)`). Use
   `select_related` / `prefetch_related` here so services never cause N+1 queries.
 - **internal/**: same rules as public views, but authenticated with `X-Service-Token` and never mounted
-  under `/api/core/v1`.
+  under `/api/core/v1`. Nginx has no `/internal` location, so these routes can't be reached from
+  outside; keep it that way.
 - Prefer another app's **services**. Call its repositories directly only from sync code
   (inside `transaction.atomic`, authentication) or for a read no service offers. Use another
   app's model manager only to lock a row (`select_for_update`).

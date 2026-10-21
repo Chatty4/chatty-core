@@ -6,13 +6,22 @@ from django.db import IntegrityError, transaction
 
 from authn.schemas import TokenPairSchema
 from authn.services import AuthnService
+from channels.repositories import ChannelMemberRepository, ChannelRepository
 from shared.codes import ErrorCode
-from shared.exceptions import BadRequest, Conflict, RateLimited, Unauthorized, UserInactive
+from shared.exceptions import (
+    BadRequest,
+    Conflict,
+    NotFound,
+    RateLimited,
+    Unauthorized,
+    UserInactive,
+)
 from shared.redis import clear_rate_limit, rate_limit, undo_rate_limit
+from teams.repositories import TeamMemberRepository
 from teams.services import InviteService, TeamService
 from users.models import User
 from users.repositories import UserRepository
-from users.schemas import Me
+from users.schemas import Me, Memberships, TeamMembership
 
 REGISTER_LIMIT = 10
 REGISTER_WINDOW = 60 * 60
@@ -42,6 +51,31 @@ class UserService:
     @staticmethod
     async def get_me(user: User) -> Me:
         return Me(user, await TeamService.list_for_user(user.id))
+
+    @staticmethod
+    async def get_memberships(user_id: UUID) -> Memberships:
+        """
+        Teams and channels for chatty-chat's access checks.
+        A deactivated user is returned too, with is_active False.
+        """
+        user = await sync_to_async(UserRepository.get_by_id_sync)(user_id)
+        if user is None:
+            raise NotFound(ErrorCode.USER_NOT_FOUND)
+
+        team_members = await TeamMemberRepository.list_for_user(user_id)
+        team_ids = [m.team_id for m in team_members]  # type: ignore[attr-defined]
+        public_ids = await ChannelRepository.list_public_ids_by_team(team_ids)
+        channels = await ChannelMemberRepository.list_for_user_in_teams(team_ids, user_id)
+
+        return Memberships(
+            user_id=user.id,
+            is_active=user.is_active,
+            teams=[
+                TeamMembership(m.team_id, m.role, public_ids[m.team_id])  # type: ignore[attr-defined]
+                for m in team_members
+            ],
+            channels=channels,
+        )
 
     @staticmethod
     async def update_profile(

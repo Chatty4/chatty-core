@@ -48,6 +48,19 @@ class ChannelRepository:
         )
 
     @staticmethod
+    async def list_public_ids_by_team(team_ids: list[UUID]) -> dict[UUID, list[UUID]]:
+        """{team_id: [public channel ids]} for these teams, archived channels included."""
+        result = {team_id: [] for team_id in team_ids}
+        qs = Channel.objects.filter(team_id__in=team_ids, kind=Channel.Kind.PUBLIC).values_list(
+            "team_id", "id"
+        )
+
+        async for team_id, channel_id in qs:
+            result[team_id].append(channel_id)
+
+        return result
+
+    @staticmethod
     def create_sync(
         team: Team,
         name: str,

@@ -22,10 +22,10 @@ class ChannelMemberRepository:
         return await paginate(qs, ("joined_at", "user_id"), cursor, limit, "channel_members")
 
     @staticmethod
-    async def list_for_user_in_team(team_id: UUID, user_id: UUID) -> list[ChannelMember]:
-        """My membership in the team's channels, each with its channel loaded."""
+    async def list_for_user_in_teams(team_ids: list[UUID], user_id: UUID) -> list[ChannelMember]:
+        """My membership in these teams' channels, each with its channel loaded."""
         qs = (
-            ChannelMember.objects.filter(user_id=user_id, channel__team_id=team_id)
+            ChannelMember.objects.filter(user_id=user_id, channel__team_id__in=team_ids)
             .select_related("channel")
             .order_by("channel__name", "channel_id")
         )
