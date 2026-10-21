@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from datetime import timedelta
 
 import pytest
@@ -6,6 +7,8 @@ from django.utils import timezone
 
 from authn.services import AuthnService
 from channels.models import Channel, ChannelMember
+from channels.schemas import MembershipAction, MembershipChanged
+from shared.events import EventType
 from shared.exceptions import NotFound
 from shared.redis import clear_rate_limit, get_redis_client
 from teams.models import Invite, Team, TeamMember
@@ -420,3 +423,23 @@ async def test_join_shares_the_lookup_rate_limit(async_client, joiner_auth):
 
     assert response.status_code == 429
     assert response.json()["error"]["code"] == "rate_limited"
+
+
+# --- membership.changed event ---
+
+
+async def test_join_publishes_added_for_each_default_channel(
+    async_client, invite, team, general, joiner, joiner_auth, published
+):
+    await async_client.post(url(invite.code), headers=joiner_auth)
+
+    memberships = [d for t, d in published if t == EventType.MEMBERSHIP_CHANGED]
+    assert memberships == [
+        asdict(MembershipChanged(joiner.id, general.id, team.id, MembershipAction.ADDED))
+    ]
+
+
+async def test_join_as_member_publishes_no_membership(async_client, invite, owner_auth, published):
+    await async_client.post(url(invite.code), headers=owner_auth)
+
+    assert [t for t, _ in published if t == EventType.MEMBERSHIP_CHANGED] == []

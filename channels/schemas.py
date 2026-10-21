@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import StrEnum
 from uuid import UUID
 
 from channels.models import Channel, ChannelMember
@@ -64,3 +65,19 @@ class ChannelUpdated:
             topic=channel.topic or None,
             archived=channel.archived_at is not None,
         )
+
+
+class MembershipAction(StrEnum):
+    ADDED = "added"
+    REMOVED = "removed"
+    SETTINGS = "settings"
+
+
+@dataclass(frozen=True)
+class MembershipChanged:
+    """membership.changed data."""
+
+    user_id: UUID
+    channel_id: UUID
+    team_id: UUID
+    action: MembershipAction

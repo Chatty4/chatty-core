@@ -1,4 +1,5 @@
 import secrets
+from dataclasses import asdict
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
@@ -8,7 +9,10 @@ from django.utils import timezone
 
 from channels.models import ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
+from channels.schemas import MembershipAction, MembershipChanged
+from shared import events
 from shared.codes import ErrorCode
+from shared.events import EventType
 from shared.exceptions import Conflict, Gone, NotFound, PermissionDenied, RateLimited
 from shared.redis import rate_limit
 from teams.models import Invite, Team, TeamMember
@@ -160,7 +164,15 @@ class InviteService:
         """Join the team with an invite. Already a member: nothing changes and uses don't go up."""
         await InviteService._limit_code_guesses(ip)
         invite = await InviteService._get_invite_or_404(code)
-        return await sync_to_async(InviteService._join_sync)(invite.id, invite.team, user_id)
+        result = await sync_to_async(InviteService._join_sync)(invite.id, invite.team, user_id)
+        for channel_id in result.channel_ids:  # empty when already a member
+            await events.publish(
+                EventType.MEMBERSHIP_CHANGED,
+                asdict(
+                    MembershipChanged(user_id, channel_id, result.team_id, MembershipAction.ADDED)
+                ),
+            )
+        return result
 
     @staticmethod
     @transaction.atomic
@@ -197,7 +209,6 @@ class InviteService:
         InviteRepository.increment_uses_sync(invite)
 
         # TODO(CHAT-172): on_commit publish team.member.changed (joined)
-        # TODO(CHAT-172): on_commit publish membership.changed (added) per channel
 
         return JoinTeamResult(
             team_id=team.id,
