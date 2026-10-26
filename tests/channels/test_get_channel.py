@@ -3,6 +3,7 @@ import uuid
 import pytest
 
 from channels.models import Channel
+from channels.services import ChannelService
 from teams.models import TeamMember
 from teams.services import TeamService
 from tests.helpers import headers_for, make_user
@@ -85,3 +86,15 @@ async def test_unknown_channel_is_not_found(async_client, owner):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "channel_not_found"
+
+
+async def test_dm_has_null_name_and_topic(async_client, team, owner, member):
+    dm = await ChannelService.open_dm(team.id, owner.id, [member.id])
+
+    response = await get_channel(async_client, dm.channel.id, owner)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["kind"] == "dm"
+    assert body["name"] is None
+    assert body["topic"] is None

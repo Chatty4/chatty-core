@@ -5,6 +5,11 @@ from channels.schemas import ChannelDetail, MyChannel
 from shared.pagination import PageQuery
 
 
+def _dm_null(channel: Channel, value: str) -> str | None:
+    """DMs have no name or topic: null, the same on every endpoint."""
+    return None if channel.kind == Channel.Kind.DM else value
+
+
 class CreateChannelRequest(serializers.Serializer):
     name = serializers.RegexField(r"^[a-z0-9_-]+$", max_length=80)
     kind = serializers.ChoiceField(choices=[Channel.Kind.PUBLIC, Channel.Kind.PRIVATE])
@@ -15,12 +20,18 @@ class ChannelResponse(serializers.Serializer):
     id = serializers.UUIDField()
     team_id = serializers.UUIDField()
     kind = serializers.CharField()
-    name = serializers.CharField()
-    topic = serializers.CharField()
+    name = serializers.SerializerMethodField()
+    topic = serializers.SerializerMethodField()
     is_default = serializers.BooleanField()
     archived = serializers.SerializerMethodField()
     created_by = serializers.UUIDField(source="created_by_id", allow_null=True)
     created_at = serializers.DateTimeField()
+
+    def get_name(self, channel: Channel) -> str | None:
+        return _dm_null(channel, channel.name)
+
+    def get_topic(self, channel: Channel) -> str | None:
+        return _dm_null(channel, channel.topic)
 
     def get_archived(self, channel: Channel) -> bool:
         return channel.archived_at is not None
@@ -44,10 +55,10 @@ class MyChannelResponse(serializers.Serializer):
     my = MySettingsResponse()
 
     def get_name(self, item: MyChannel) -> str | None:
-        return None if item.channel.kind == Channel.Kind.DM else item.channel.name
+        return _dm_null(item.channel, item.channel.name)
 
     def get_topic(self, item: MyChannel) -> str | None:
-        return None if item.channel.kind == Channel.Kind.DM else item.channel.topic
+        return _dm_null(item.channel, item.channel.topic)
 
     def get_archived(self, item: MyChannel) -> bool:
         return item.channel.archived_at is not None
