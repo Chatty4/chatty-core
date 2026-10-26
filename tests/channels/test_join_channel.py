@@ -89,6 +89,17 @@ async def test_cannot_join_archived_channel(async_client, team, member):
     assert response.json()["error"]["code"] == "channel_archived"
 
 
+async def test_member_of_archived_channel_gets_200(async_client, team, owner, published):
+    await Channel.objects.filter(id=team.general_channel_id).aupdate(archived_at=timezone.now())
+    published.clear()  # the team create events
+
+    response = await join(async_client, team.general_channel_id, owner)
+
+    assert response.status_code == 200
+    assert response.json()["role"] == "owner"  # the existing membership
+    assert published == []
+
+
 async def test_missing_channel_is_404(async_client, member):
     response = await join(async_client, uuid.uuid4(), member)
 

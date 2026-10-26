@@ -200,6 +200,9 @@ class ChannelService:
         await TeamService.require_member(channel.team.id, user_id)
         if channel.kind != Channel.Kind.PUBLIC:
             raise PermissionDenied(ErrorCode.CANNOT_JOIN_PRIVATE)
+        existing = await ChannelMemberRepository.get_member(channel_id, user_id)
+        if existing is not None:  # already a member: 200 even when archived, no event
+            return existing
         if channel.archived_at is not None:
             raise Conflict(ErrorCode.CHANNEL_ARCHIVED)
 
