@@ -24,7 +24,7 @@ async def make_user(email: str) -> User:
 
 
 @pytest.fixture
-async def setup():
+async def setup(published):
     """Olga owns the team. Ana owns private #secret; Bob joined it before Carl."""
     names = ("olga", "ana", "bob", "carl")
     olga, ana, bob, carl = [await make_user(f"{n}@example.com") for n in names]
@@ -41,6 +41,7 @@ async def setup():
         await ChannelMember.objects.filter(pk=member.pk).aupdate(
             joined_at=timezone.now() + timedelta(hours=hours)
         )
+    published.clear()  # tests check only the events of the action under test
     return team, secret, {"olga": olga, "ana": ana, "bob": bob, "carl": carl}
 
 
@@ -97,5 +98,6 @@ async def test_leaving_team_publishes_hand_off(setup, published):
 
     memberships = [d for t, d in published if t == EventType.MEMBERSHIP_CHANGED]
     assert memberships == [
-        asdict(MembershipChanged(u["bob"].id, secret.id, team.id, MembershipAction.SETTINGS))
+        asdict(MembershipChanged(u["ana"].id, secret.id, team.id, MembershipAction.REMOVED)),
+        asdict(MembershipChanged(u["bob"].id, secret.id, team.id, MembershipAction.SETTINGS)),
     ]

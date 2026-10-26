@@ -26,11 +26,12 @@ def team_events(published):
 
 
 @pytest.fixture
-async def world():
+async def world(published):
     """Ana owns the team, Bob is a member."""
     ana, bob = await make_user("ana@example.com"), await make_user("bob@example.com")
     team = await TeamService.create("A", ana.id)
     await TeamMember.objects.acreate(team_id=team.id, user=bob, role=TeamMember.Role.MEMBER)
+    published.clear()  # tests check only the events of the action under test
     return {"ana": ana, "bob": bob, "team": team}
 
 

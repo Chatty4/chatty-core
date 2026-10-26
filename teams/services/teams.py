@@ -68,7 +68,20 @@ class TeamService:
 
     @staticmethod
     async def create(name: str, user_id: UUID) -> CreateTeamResult:
-        return await sync_to_async(TeamService._create_sync)(name, user_id)
+        result = await sync_to_async(TeamService._create_sync)(name, user_id)
+        await events.publish(
+            EventType.TEAM_MEMBER_CHANGED,
+            asdict(TeamMemberChanged(user_id, result.id, TeamMemberAction.JOINED, result.role)),
+        )
+        await events.publish(
+            EventType.MEMBERSHIP_CHANGED,
+            asdict(
+                MembershipChanged(
+                    user_id, result.general_channel_id, result.id, MembershipAction.ADDED
+                )
+            ),
+        )
+        return result
 
     @staticmethod
     @transaction.atomic
@@ -236,8 +249,9 @@ class TeamService:
         """Take the user out of a team and all its channels, and revoke the invites they created
         (their links shouldn't keep letting people into a team they left). In a private channel
         where they were the only owner, the member who joined first becomes owner, as with
-        channel leave. Returns the hand-off events to publish once the transaction has
-        committed."""
+        channel leave. Returns the events to publish once the transaction has committed: one
+        removed per channel they were in, then the hand-offs."""
+        channel_ids = ChannelMemberRepository.list_channel_ids_sync(team_id, user_id)
         changes = []
         for channel_id in ChannelMemberRepository.list_private_channel_ids_sync(team_id, user_id):
             owner_ids = ChannelMemberRepository.lock_owner_ids_sync(channel_id)
@@ -251,7 +265,11 @@ class TeamService:
         ChannelMemberRepository.delete_in_team_sync(team_id, user_id)
         TeamMemberRepository.delete_sync(team_id, user_id)
         InviteRepository.revoke_created_by_sync(team_id, user_id)
-        return changes
+        removed = [
+            MembershipChanged(user_id, channel_id, team_id, MembershipAction.REMOVED)
+            for channel_id in channel_ids
+        ]
+        return removed + changes
 
     @staticmethod
     async def leave(team_id: UUID, user_id: UUID) -> None:

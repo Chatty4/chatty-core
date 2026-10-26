@@ -23,12 +23,13 @@ def mc(user, channel_id, team_id, action):
 
 
 @pytest.fixture
-async def world():
+async def world(published):
     """Ana owns the team, Bob and Carl are members."""
     ana, bob, carl = [await make_user(f"{n}@example.com") for n in ("ana", "bob", "carl")]
     team = await TeamService.create("A", ana.id)
     for user in (bob, carl):
         await TeamMember.objects.acreate(team_id=team.id, user=user, role=TeamMember.Role.MEMBER)
+    published.clear()  # tests check only the events of the action under test
     return {"ana": ana, "bob": bob, "carl": carl, "team": team}
 
 
@@ -85,6 +86,37 @@ async def test_remove_member(world, published):
     await ChannelService.remove_member(secret.id, ana.id, bob.id)
 
     assert published == [mc(bob, secret.id, t, REMOVED)]
+
+
+async def test_leave_team_publishes_removed_for_every_channel(world, published):
+    t, ana, bob = world["team"].id, world["ana"], world["bob"]
+    general = world["team"].general_channel_id
+    secret = await ChannelService.create(t, ana.id, "secret", "private", "")
+    await ChannelService.join(general, bob.id)
+    await ChannelService.add_members(secret.id, ana.id, [bob.id])
+    dm = await ChannelService.open_dm(t, ana.id, [bob.id])
+    published.clear()
+
+    await TeamService.leave(t, bob.id)
+
+    memberships = [e for e in published if e[0] == EventType.MEMBERSHIP_CHANGED]
+    channel_ids = sorted([general, secret.id, dm.channel.id])
+    assert memberships == [mc(bob, channel_id, t, REMOVED) for channel_id in channel_ids]
+
+
+async def test_remove_from_team_publishes_removed_for_every_channel(world, published):
+    t, ana, bob = world["team"].id, world["ana"], world["bob"]
+    general = world["team"].general_channel_id
+    secret = await ChannelService.create(t, ana.id, "secret", "private", "")
+    await ChannelService.join(general, bob.id)
+    await ChannelService.add_members(secret.id, ana.id, [bob.id])
+    published.clear()
+
+    await TeamService.remove_member(t, ana.id, bob.id)
+
+    memberships = [e for e in published if e[0] == EventType.MEMBERSHIP_CHANGED]
+    channel_ids = sorted([general, secret.id])
+    assert memberships == [mc(bob, channel_id, t, REMOVED) for channel_id in channel_ids]
 
 
 async def test_add_members_publishes_only_new_ones(world, published):

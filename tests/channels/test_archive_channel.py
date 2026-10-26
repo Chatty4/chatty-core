@@ -22,8 +22,10 @@ async def owner():
 
 
 @pytest.fixture
-async def team(owner):
-    return await TeamService.create("Backend", owner.id)
+async def team(owner, published):
+    team = await TeamService.create("Backend", owner.id)
+    published.clear()  # tests check only the events of the action under test
+    return team
 
 
 @pytest.fixture

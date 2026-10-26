@@ -1,9 +1,16 @@
+from dataclasses import asdict
+
 import pytest
 from asgiref.sync import sync_to_async
 
 from authn.services import AuthnService
 from channels.models import Channel, ChannelMember
+from channels.schemas import MembershipAction, MembershipChanged
+from shared.events import EventType
+from shared.exceptions import Conflict
 from teams.models import Team, TeamMember
+from teams.schemas import TeamMemberAction, TeamMemberChanged
+from teams.services import TeamService
 from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -139,3 +146,31 @@ async def test_create_team_limit_ignores_deleted_teams(async_client, user, auth)
     response = await post_teams(async_client, {"name": "Fresh Team"}, auth)
 
     assert response.status_code == 201
+
+
+async def test_create_team_publishes_joined_and_general_added(user, published):
+    team = await TeamService.create("Backend", user.id)
+
+    assert published == [
+        (
+            EventType.TEAM_MEMBER_CHANGED,
+            asdict(TeamMemberChanged(user.id, team.id, TeamMemberAction.JOINED, "owner")),
+        ),
+        (
+            EventType.MEMBERSHIP_CHANGED,
+            asdict(
+                MembershipChanged(user.id, team.general_channel_id, team.id, MembershipAction.ADDED)
+            ),
+        ),
+    ]
+
+
+async def test_create_team_limit_publishes_nothing(user, published):
+    await sync_to_async(Team.objects.bulk_create)(
+        [Team(name=f"Team {i}", created_by=user) for i in range(10)]
+    )
+
+    with pytest.raises(Conflict):  # team_limit_reached
+        await TeamService.create("One Too Many", user.id)
+
+    assert published == []
