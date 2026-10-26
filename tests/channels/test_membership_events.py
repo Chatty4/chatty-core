@@ -23,12 +23,13 @@ def mc(user, channel_id, team_id, action):
 
 
 @pytest.fixture
-async def world():
+async def world(published):
     """Ana owns the team, Bob and Carl are members."""
     ana, bob, carl = [await make_user(f"{n}@example.com") for n in ("ana", "bob", "carl")]
     team = await TeamService.create("A", ana.id)
     for user in (bob, carl):
         await TeamMember.objects.acreate(team_id=team.id, user=user, role=TeamMember.Role.MEMBER)
+    published.clear()  # tests check only the events of the action under test
     return {"ana": ana, "bob": bob, "carl": carl, "team": team}
 
 

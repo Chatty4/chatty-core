@@ -68,7 +68,20 @@ class TeamService:
 
     @staticmethod
     async def create(name: str, user_id: UUID) -> CreateTeamResult:
-        return await sync_to_async(TeamService._create_sync)(name, user_id)
+        result = await sync_to_async(TeamService._create_sync)(name, user_id)
+        await events.publish(
+            EventType.TEAM_MEMBER_CHANGED,
+            asdict(TeamMemberChanged(user_id, result.id, TeamMemberAction.JOINED, result.role)),
+        )
+        await events.publish(
+            EventType.MEMBERSHIP_CHANGED,
+            asdict(
+                MembershipChanged(
+                    user_id, result.general_channel_id, result.id, MembershipAction.ADDED
+                )
+            ),
+        )
+        return result
 
     @staticmethod
     @transaction.atomic
