@@ -51,6 +51,15 @@ class ChannelMemberRepository:
         return result
 
     @staticmethod
+    def list_channel_ids_sync(team_id: UUID, user_id: UUID) -> list[UUID]:
+        """Every channel of the team the user is in, DMs included, ordered by id."""
+        return list(
+            ChannelMember.objects.filter(user_id=user_id, channel__team_id=team_id)
+            .order_by("channel_id")
+            .values_list("channel_id", flat=True)
+        )
+
+    @staticmethod
     def list_private_channel_ids_sync(team_id: UUID, user_id: UUID) -> list[UUID]:
         """The team's private channels the user is in, ordered by id so their locks are always
         taken in the same order."""

@@ -88,6 +88,37 @@ async def test_remove_member(world, published):
     assert published == [mc(bob, secret.id, t, REMOVED)]
 
 
+async def test_leave_team_publishes_removed_for_every_channel(world, published):
+    t, ana, bob = world["team"].id, world["ana"], world["bob"]
+    general = world["team"].general_channel_id
+    secret = await ChannelService.create(t, ana.id, "secret", "private", "")
+    await ChannelService.join(general, bob.id)
+    await ChannelService.add_members(secret.id, ana.id, [bob.id])
+    dm = await ChannelService.open_dm(t, ana.id, [bob.id])
+    published.clear()
+
+    await TeamService.leave(t, bob.id)
+
+    memberships = [e for e in published if e[0] == EventType.MEMBERSHIP_CHANGED]
+    channel_ids = sorted([general, secret.id, dm.channel.id])
+    assert memberships == [mc(bob, channel_id, t, REMOVED) for channel_id in channel_ids]
+
+
+async def test_remove_from_team_publishes_removed_for_every_channel(world, published):
+    t, ana, bob = world["team"].id, world["ana"], world["bob"]
+    general = world["team"].general_channel_id
+    secret = await ChannelService.create(t, ana.id, "secret", "private", "")
+    await ChannelService.join(general, bob.id)
+    await ChannelService.add_members(secret.id, ana.id, [bob.id])
+    published.clear()
+
+    await TeamService.remove_member(t, ana.id, bob.id)
+
+    memberships = [e for e in published if e[0] == EventType.MEMBERSHIP_CHANGED]
+    channel_ids = sorted([general, secret.id])
+    assert memberships == [mc(bob, channel_id, t, REMOVED) for channel_id in channel_ids]
+
+
 async def test_add_members_publishes_only_new_ones(world, published):
     t, ana, bob, carl = world["team"].id, world["ana"], world["bob"], world["carl"]
     secret = await ChannelService.create(t, ana.id, "secret", "private", "")

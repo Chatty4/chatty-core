@@ -98,5 +98,6 @@ async def test_leaving_team_publishes_hand_off(setup, published):
 
     memberships = [d for t, d in published if t == EventType.MEMBERSHIP_CHANGED]
     assert memberships == [
-        asdict(MembershipChanged(u["bob"].id, secret.id, team.id, MembershipAction.SETTINGS))
+        asdict(MembershipChanged(u["ana"].id, secret.id, team.id, MembershipAction.REMOVED)),
+        asdict(MembershipChanged(u["bob"].id, secret.id, team.id, MembershipAction.SETTINGS)),
     ]
