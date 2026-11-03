@@ -42,7 +42,7 @@ shared/                 code used by more than one app, no business rules
   http.py               client_ip(): real client IP behind Nginx
   redis.py              Redis client and rate-limit helpers
   pagination.py         cursor pagination from api-core.md
-  events.py             (planned, CHAT-172) Redis publisher for core.events (D-06, D-08)
+  events.py             Redis publisher for core.events (D-06, D-08)
   storage.py            (planned, files app) MinIO client and presigned URLs
 authn/                  refresh token model, RS256 JWT issuance, rotation and revocation
   authentication.py     JWTAuthentication: Bearer JWT for /api/core/v1
@@ -162,7 +162,7 @@ Async by default, with explicit sync islands.
   use `settings.AUTH_USER_MODEL` in models and `get_user_model()` elsewhere.
 - Users are never deleted: deletes cascade through every membership. Deactivate them with
   `UserService.deactivate` (the admin `deactivate` action), which also revokes their tokens and invites,
-  hands off their teams and, once CHAT-172 lands, publishes `user.deactivated`. Never set
+  hands off their teams and publishes `user.deactivated`. Never set
   `is_active = False` directly.
 - Teams are soft-deleted (`deleted_at`). Team queries filter `deleted_at__isnull=True`.
 - Errors always use the contract body: `{"error": {"code", "message", "fields"?}}`. Codes come from
