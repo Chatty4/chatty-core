@@ -85,7 +85,7 @@ Exact requests, responses and errors: `chatty-infra/docs/api-core.md`.
 | `GET` / `POST channels/{channel_id}/members` | List members (paginated) / add up to 50 team members |
 | `DELETE channels/{channel_id}/members/{user_id}` | Remove someone (channel owner, team owner or admin) |
 
-Not built yet: files, `/internal`, and Redis events (`core.events`).
+Not built yet: files.
 
 ## Daily commands
 
