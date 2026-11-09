@@ -73,7 +73,7 @@ async def test_refresh_revokes_old_token(async_client, tokens):
     assert token.revoked_at is not None
 
 
-async def test_refresh_old_token_is_rejected(async_client, tokens):
+async def test_refresh_old_token_within_grace_gets_a_new_pair(async_client, tokens):
     old_refresh = tokens["refresh_token"]
 
     await async_client.post(
@@ -87,8 +87,8 @@ async def test_refresh_old_token_is_rejected(async_client, tokens):
         content_type="application/json",
     )
 
-    assert response.status_code == 401
-    assert response.json()["error"]["code"] == "invalid_refresh_token"
+    assert response.status_code == 200
+    assert response.json()["refresh_token"] != old_refresh
 
 
 async def test_refresh_unknown_token_is_rejected(async_client, user):
