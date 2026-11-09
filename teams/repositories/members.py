@@ -43,6 +43,15 @@ class TeamMemberRepository:
         return [m async for m in qs.order_by("user__display_name", "user_id")]
 
     @staticmethod
+    def list_member_ids_sync(team_id: UUID, user_ids: list[UUID]) -> set[UUID]:
+        """Which of these users are in the team. For use inside transaction.atomic."""
+        return set(
+            TeamMember.objects.filter(team_id=team_id, user_id__in=user_ids).values_list(
+                "user_id", flat=True
+            )
+        )
+
+    @staticmethod
     def list_owned_team_ids_sync(user_id: UUID) -> list[UUID]:
         """Ids of the live teams this user owns, sorted so their locks are always taken in the
         same order."""
