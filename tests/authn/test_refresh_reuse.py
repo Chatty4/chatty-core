@@ -56,16 +56,30 @@ async def test_reusing_rotated_token_deletes_every_session(user):
         await service.refresh_tokens(other.refresh_token)
 
 
-async def test_reuse_within_grace_keeps_other_sessions(user):
+async def test_retry_within_grace_gets_a_new_pair(user):
     service = AuthnService()
     lost = await service.issue_tokens(user)
     other = await service.issue_tokens(user)
     await service.refresh_tokens(lost.refresh_token)  # the response that never arrived
 
-    with pytest.raises(Unauthorized):
-        await service.refresh_tokens(lost.refresh_token)
+    retry = await service.refresh_tokens(lost.refresh_token)
 
+    assert retry.refresh_token != lost.refresh_token
+    assert (await service.refresh_tokens(retry.refresh_token)).refresh_token
     assert (await service.refresh_tokens(other.refresh_token)).refresh_token
+
+
+async def test_retry_within_grace_does_not_stretch_the_grace(user):
+    service = AuthnService()
+    lost = await service.issue_tokens(user)
+    await service.refresh_tokens(lost.refresh_token)
+    first = (await RefreshToken.objects.aget(user=user, revoked_at__isnull=False)).revoked_at
+
+    await service.refresh_tokens(lost.refresh_token)
+
+    assert (
+        await RefreshToken.objects.aget(user=user, revoked_at__isnull=False)
+    ).revoked_at == first
 
 
 async def test_logout_with_rotated_token_is_a_no_op(user):

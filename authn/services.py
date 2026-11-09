@@ -111,24 +111,25 @@ class AuthnService:
     def _rotate_sync(
         self, token_hash: str, new_hash: str, new_expires_at: datetime
     ) -> tuple[str, bool]:
-        """Returns (user_id, reuse_detected). Reuse means the token was already rotated;
-        the caller must revoke all sessions outside this transaction."""
+        """Returns (user_id, reuse_detected). Reuse means the token was already rotated more than
+        the grace ago; the caller must revoke all sessions outside this transaction. Within
+        the grace, a retry after a lost response rotates again."""
         token = RefreshTokenRepository.get_by_hash_sync(token_hash)
         if token is None:
             raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
         if token.revoked_at is not None:
             grace = timedelta(seconds=settings.JWT_REFRESH_REUSE_GRACE)
-            if timezone.now() - token.revoked_at < grace:
-                # a retry after a lost response: reject it, but keep the other devices logged in
-                raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
-            return str(token.user_id), True
+            if timezone.now() - token.revoked_at >= grace:
+                return str(token.user_id), True  # reuse after the grace: theft
+            # withing the grace: a retry after a lost response, so rotate again below
         if token.expires_at <= timezone.now():
             raise Unauthorized(ErrorCode.INVALID_REFRESH_TOKEN)
 
         if not token.user.is_active:
             raise UserInactive()
 
-        RefreshTokenRepository.revoke_sync(token)
+        if token.revoked_at is None:  # keep the first time, so retries can't stretch the grace.
+            RefreshTokenRepository.revoke_sync(token)
         RefreshTokenRepository.create_sync(str(token.user_id), new_hash, new_expires_at)
 
         return str(token.user_id), False
