@@ -23,7 +23,7 @@ from shared.codes import ErrorCode
 from shared.events import EventType
 from shared.exceptions import BadRequest, Conflict, NotFound, PermissionDenied, ValidationFailed
 from teams.models import Team
-from teams.repositories import TeamMemberRepository
+from teams.repositories import TeamMemberRepository, TeamRepository
 from teams.services import TeamService
 
 Need = Literal["read", "member", "write", "manage"]
@@ -206,8 +206,8 @@ class ChannelService:
         if channel.archived_at is not None:
             raise Conflict(ErrorCode.CHANNEL_ARCHIVED)
 
-        member, created = await ChannelMemberRepository.get_or_create(
-            channel_id, user_id, ChannelMember.NotifyLevel.MENTIONS
+        member, created = await sync_to_async(ChannelService._join_sync)(
+            channel.team.id, channel_id, user_id
         )
         if created:
             await events.publish(
@@ -217,6 +217,19 @@ class ChannelService:
                 ),
             )
         return member
+
+    @staticmethod
+    @transaction.atomic
+    def _join_sync(team_id: UUID, channel_id: UUID, user_id: UUID) -> tuple[ChannelMember, bool]:
+        """The team lock makes a parralel team removal run before or after this, never between,
+        so a removed user can't be left with a channel row."""
+        if not TeamRepository.lock_sync(team_id):
+            raise NotFound(ErrorCode.CHANNEL_NOT_FOUND)
+        if TeamMemberRepository.get_member_sync(team_id, user_id) is None:
+            raise PermissionDenied(ErrorCode.NOT_A_TEAM_MEMBER)
+        return ChannelMemberRepository.get_or_create_sync(
+            channel_id, user_id, ChannelMember.NotifyLevel.MENTIONS
+        )
 
     @staticmethod
     async def leave(channel_id: UUID, user_id: UUID) -> None:
@@ -254,13 +267,12 @@ class ChannelService:
         if access.channel.kind == Channel.Kind.DM:
             raise BadRequest(ErrorCode.NOT_ALLOWED_FOR_DM)
         user_ids = list(dict.fromkeys(user_ids))  # drop duplicates, keep order
-        in_team = await TeamMemberRepository.list_members_by_user_ids(
-            access.channel.team.id, user_ids
-        )
-        if len(in_team) != len(user_ids):
-            raise BadRequest(ErrorCode.USER_NOT_IN_TEAM)
-        added = await ChannelMemberRepository.add_many(
-            channel_id, user_ids, ChannelMember.NotifyLevel.MENTIONS
+
+        added = await sync_to_async(ChannelService._add_members_sync)(
+            access.channel.team.id,
+            channel_id,
+            user_id,
+            user_ids,
         )
         for added_id in added:
             await events.publish(
@@ -273,6 +285,24 @@ class ChannelService:
             )
 
         return added, [uid for uid in user_ids if uid not in added]
+
+    @staticmethod
+    @transaction.atomic
+    def _add_members_sync(
+        team_id: UUID, channel_id: UUID, user_id: UUID, user_ids: list[UUID]
+    ) -> list[UUID]:
+        """Team membership is checked under the team lock, so a parallel team removal can't
+        leave a removed user in the channel, or let a remove user add people."""
+        if not TeamRepository.lock_sync(team_id):
+            raise NotFound(ErrorCode.CHANNEL_NOT_FOUND)
+        in_team = TeamMemberRepository.list_member_ids_sync(team_id, [user_id, *user_ids])
+        if user_id not in in_team:
+            raise PermissionDenied(ErrorCode.NOT_A_MEMBER)
+        if not set(user_ids) <= in_team:
+            raise BadRequest(ErrorCode.USER_NOT_IN_TEAM)
+        return ChannelMemberRepository.add_many_sync(
+            channel_id, user_ids, ChannelMember.NotifyLevel.MENTIONS
+        )
 
     @staticmethod
     async def remove_member(channel_id: UUID, user_id: UUID, target_id: UUID) -> None:

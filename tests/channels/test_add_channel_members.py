@@ -134,13 +134,17 @@ async def test_user_who_joined_meanwhile_is_not_reported_as_added(
     async_client, team, owner, member, monkeypatch
 ):
     manager = ChannelMember.objects
-    original = manager.abulk_create
+    original = manager.bulk_create
 
-    async def join_first(objs, **kwargs):
-        await add_to(team.general_channel_id, member)  # the parallel join wins the race
-        return await original(objs, **kwargs)
+    def join_first(objs, **kwargs):
+        manager.create(  # the parallel join wins the race
+            channel_id=team.general_channel_id,
+            user=member,
+            notify_level=ChannelMember.NotifyLevel.ALL,
+        )
+        return original(objs, **kwargs)
 
-    monkeypatch.setattr(manager, "abulk_create", join_first)
+    monkeypatch.setattr(manager, "bulk_create", join_first)
 
     response = await add_members(async_client, team.general_channel_id, owner, [member.id])
 
