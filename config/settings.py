@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "authn",
     "teams",
     "channels",
+    "files",
 ]
 
 MIDDLEWARE = [
