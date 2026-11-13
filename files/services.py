@@ -8,12 +8,13 @@ from asgiref.sync import sync_to_async
 from django.db import transaction
 from django.utils import timezone
 
+from files import checks
 from files.models import File
 from files.repositories import FileRepository
 from files.schemas import UploadResult
 from shared import storage
 from shared.codes import ErrorCode
-from shared.exceptions import BadRequest, RateLimited
+from shared.exceptions import BadRequest, Gone, NotFound, PermissionDenied, RateLimited
 from shared.redis import rate_limit
 from teams.services import TeamService
 
@@ -158,3 +159,51 @@ class FileService:
             size=size,
             upload_expires_at=now + timedelta(seconds=storage.UPLOAD_URL_SECONDS),
         )
+
+    @staticmethod
+    async def confirm(file_id: UUID, user_id: UUID) -> File:
+        """
+        Step 3: copy uploads/{file_id} to the final key, check the copy, mark it ready.
+        A copy that fails a check is deleted with its upload, and so is the file.
+        """
+        file = await FileRepository.get(file_id)
+        if file is None or file.deleted_at is not None:
+            raise NotFound(ErrorCode.FILE_NOT_FOUND)
+        if file.owner_id != user_id:
+            raise PermissionDenied()
+        if file.status == File.Status.READY:
+            return file
+
+        now = timezone.now()
+        if file.upload_expires_at <= now:
+            raise Gone(ErrorCode.UPLOAD_EXPIRED, "The upload URL expired; start again")
+
+        upload_key = f"uploads/{file_id}"
+        if await sync_to_async(storage.head, thread_sensitive=False)(upload_key) is None:
+            raise BadRequest(ErrorCode.UPLOAD_MISSING, "Nothing was uploaded for this file")
+
+        await sync_to_async(storage.copy, thread_sensitive=False)(upload_key, file.object_key)
+        if not await FileService._copy_matches(file):
+            await sync_to_async(storage.delete)(upload_key, file.object_key)
+            await FileRepository.mark_deleted(file.id, now)
+            raise BadRequest(ErrorCode.UPLOAD_MISMATCH, "The upload doesn't match the file")
+
+        if not await FileRepository.mark_ready(file.id):
+            # another confirm of this file finished first: answer with what it left
+            return await FileService.confirm(file_id, user_id)
+
+        await sync_to_async(storage.delete)(upload_key)
+        file.status = File.Status.READY
+        return file
+
+    @staticmethod
+    async def _copy_matches(file: File) -> bool:
+        """Size and type from step 1; images must really be that image, attachments no program."""
+        info = await sync_to_async(storage.head, thread_sensitive=False)(file.object_key)
+        if info is None or info.size != file.size or info.content_type != file.mime:
+            return False
+        if file.purpose == File.Purpose.ATTACHMENT:
+            start = await sync_to_async(storage.read_start, thread_sensitive=False)(file.object_key)
+            return not checks.is_program(start)
+        data = await sync_to_async(storage.read_all, thread_sensitive=False)(file.object_key)
+        return await sync_to_async(checks.detect_image_mime)(data) == file.mime
