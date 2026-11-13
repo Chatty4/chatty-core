@@ -184,7 +184,7 @@ class FileService:
 
         await sync_to_async(storage.copy, thread_sensitive=False)(upload_key, file.object_key)
         if not await FileService._copy_matches(file):
-            await sync_to_async(storage.delete)(upload_key, file.object_key)
+            await sync_to_async(storage.delete, thread_sensitive=False)(upload_key, file.object_key)
             await FileRepository.mark_deleted(file.id, now)
             raise BadRequest(ErrorCode.UPLOAD_MISMATCH, "The upload doesn't match the file")
 
@@ -192,7 +192,7 @@ class FileService:
             # another confirm of this file finished first: answer with what it left
             return await FileService.confirm(file_id, user_id)
 
-        await sync_to_async(storage.delete)(upload_key)
+        await sync_to_async(storage.delete, thread_sensitive=False)(upload_key)
         file.status = File.Status.READY
         return file
 
@@ -206,4 +206,6 @@ class FileService:
             start = await sync_to_async(storage.read_start, thread_sensitive=False)(file.object_key)
             return not checks.is_program(start)
         data = await sync_to_async(storage.read_all, thread_sensitive=False)(file.object_key)
-        return await sync_to_async(checks.detect_image_mime)(data) == file.mime
+        return (
+            await sync_to_async(checks.detect_image_mime, thread_sensitive=False)(data) == file.mime
+        )

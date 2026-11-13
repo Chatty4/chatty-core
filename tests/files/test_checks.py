@@ -1,29 +1,8 @@
-import io
-import zipfile
-
 import pytest
 from PIL import Image
 
 from files import checks
-
-
-def image_bytes(fmt: str, size: tuple[int, int] = (64, 64)) -> bytes:
-    buffer = io.BytesIO()
-    Image.effect_noise(size, 64).convert("RGB").save(buffer, fmt)
-    return buffer.getvalue()
-
-
-def zip_bytes() -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as archive:
-        archive.writestr("word/document.xml", "<w:document/>")  # what a .docx looks like
-    return buffer.getvalue()
-
-
-ELF = b"\x7fELF\x02\x01\x01" + b"\x00" * 57
-# A DOS header whose last 4 bytes (0x3C) point to the "PE" header right after it, at 0x40.
-WINDOWS = b"MZ" + b"\x00" * 58 + (0x40).to_bytes(4, "little") + b"PE\0\0" + b"\x00" * 64
-
+from tests.helpers import ELF, WINDOWS, image_bytes, zip_bytes
 
 # --- detect_image_mime ---
 
