@@ -9,6 +9,10 @@ from files.models import File
 
 class FileRepository:
     @staticmethod
+    async def get(file_id: UUID) -> File | None:
+        return await File.objects.filter(id=file_id).afirst()
+
+    @staticmethod
     def count_pending_sync(owner_id: UUID, now: datetime) -> int:
         """Open uploads of the owner (not confirmed, not expired, not deleted). Locks the owner's
         user row until the transaction ends, so two parallel uploads can't both pass the cap."""
@@ -59,3 +63,16 @@ class FileRepository:
             size=size,
             upload_expires_at=upload_expires_at,
         )
+
+    @staticmethod
+    async def mark_ready(file_id: UUID) -> bool:
+        """pending -> ready. False if the file is no longer pending or was deleted meanwhile."""
+        updated = await File.objects.filter(
+            id=file_id, status=File.Status.PENDING, deleted_at__isnull=True
+        ).aupdate(status=File.Status.READY)
+        return updated == 1
+
+    @staticmethod
+    async def mark_deleted(file_id: UUID, now: datetime) -> None:
+        """The file can't be used anymore, the cleanup job removes the row."""
+        await File.objects.filter(id=file_id, deleted_at__isnull=True).aupdate(deleted_at=now)
