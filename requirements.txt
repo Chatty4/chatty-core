@@ -15,6 +15,7 @@ django-stubs==6.1.2
 django-stubs-ext==6.1.2
 djangorestframework==3.18.3
 djangorestframework-stubs==3.18.1
+filetype==1.2.0
 h11==0.16.0
 httptools==0.8.0
 idna==3.20
@@ -22,6 +23,7 @@ iniconfig==2.3.1
 jmespath==1.1.0
 mypy-boto3-s3==1.44.0
 packaging==26.3
+pillow==13.0.0
 pluggy==1.6.0
 psycopg==3.3.6
 psycopg-binary==3.3.6

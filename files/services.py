@@ -1,6 +1,7 @@
 import math
 import uuid
 from datetime import datetime, timedelta
+from pathlib import PurePath
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
@@ -25,6 +26,26 @@ IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 MAX_IMAGE_SIZE = 2 * MB  # avatars and team icons
 MAX_ATTACHMENT_SIZE = 25 * MB
 
+# D-18: programs and installers, refused for every purpose. Confirm also checks the bytes.
+BLOCKED_EXTENSIONS = {
+    ".exe", ".dll", ".com", ".scr", ".cpl", ".msi", ".msp", ".msix", ".appx", ".bat", ".cmd",
+    ".ps1", ".vbs", ".vbe", ".wsf", ".hta", ".lnk", ".jar", ".apk", ".dmg", ".pkg",
+}  # fmt: skip
+BLOCKED_TYPES = {
+    "application/x-msdownload",
+    "application/x-msdos-program",
+    "application/x-dosexec",
+    "application/vnd.microsoft.portable-executable",
+    "application/x-msi",
+    "application/x-ms-installer",
+    "application/x-executable",
+    "application/x-sharedlib",
+    "application/x-mach-binary",
+    "application/java-archive",
+    "application/vnd.android.package-archive",
+    "application/x-apple-diskimage",
+}
+
 _KEY_PREFIXES = {
     File.Purpose.AVATAR: "avatars",
     File.Purpose.TEAM_ICON: "team-icons",
@@ -43,7 +64,7 @@ class FileService:
         if retry_after:
             raise RateLimited(retry_after)
 
-        FileService._check_type_and_size(purpose, mime, size)
+        FileService._check_type_and_size(purpose, filename, mime, size)
         if team_id is not None:
             await TeamService.require_member(team_id, user_id)
 
@@ -70,7 +91,11 @@ class FileService:
         )
 
     @staticmethod
-    def _check_type_and_size(purpose: str, mime: str, size: int) -> None:
+    def _check_type_and_size(purpose: str, filename: str, mime: str, size: int) -> None:
+        if FileService._is_program(filename, mime):
+            raise BadRequest(
+                ErrorCode.TYPE_NOT_ALLOWED, "Programs and installers can't be uploaded"
+            )
         if purpose == File.Purpose.ATTACHMENT:
             if size > MAX_ATTACHMENT_SIZE:
                 raise BadRequest(
@@ -86,6 +111,15 @@ class FileService:
             raise BadRequest(
                 ErrorCode.FILE_TOO_LARGE, f"Images can be at most {MAX_IMAGE_SIZE // MB} MB"
             )
+
+    @staticmethod
+    def _is_program(filename: str, mime: str) -> bool:
+        """D-18 by name and declared type. Windows ignores trailing dots and spaces in a name, so
+        "setup.exe." still runs: they are dropped before the extension is read. Parameters such
+        as "; charset=binary" are dropped from the type."""
+        extension = PurePath(filename.rstrip(". ")).suffix.lower()
+        declared = mime.split(";")[0].strip().lower()
+        return extension in BLOCKED_EXTENSIONS or declared in BLOCKED_TYPES
 
     @staticmethod
     def _object_key(purpose: str, user_id: UUID, team_id: UUID | None, file_id: UUID) -> str:
