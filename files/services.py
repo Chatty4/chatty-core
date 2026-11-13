@@ -1,18 +1,20 @@
 import math
 import uuid
 from datetime import datetime, timedelta
+from pathlib import PurePath
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
 from django.db import transaction
 from django.utils import timezone
 
+from files import checks
 from files.models import File
 from files.repositories import FileRepository
 from files.schemas import UploadResult
 from shared import storage
 from shared.codes import ErrorCode
-from shared.exceptions import BadRequest, RateLimited
+from shared.exceptions import BadRequest, Gone, NotFound, PermissionDenied, RateLimited
 from shared.redis import rate_limit
 from teams.services import TeamService
 
@@ -24,6 +26,26 @@ MB = 1024 * 1024
 IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 MAX_IMAGE_SIZE = 2 * MB  # avatars and team icons
 MAX_ATTACHMENT_SIZE = 25 * MB
+
+# D-18: programs and installers, refused for every purpose. Confirm also checks the bytes.
+BLOCKED_EXTENSIONS = {
+    ".exe", ".dll", ".com", ".scr", ".cpl", ".msi", ".msp", ".msix", ".appx", ".bat", ".cmd",
+    ".ps1", ".vbs", ".vbe", ".wsf", ".hta", ".lnk", ".jar", ".apk", ".dmg", ".pkg",
+}  # fmt: skip
+BLOCKED_TYPES = {
+    "application/x-msdownload",
+    "application/x-msdos-program",
+    "application/x-dosexec",
+    "application/vnd.microsoft.portable-executable",
+    "application/x-msi",
+    "application/x-ms-installer",
+    "application/x-executable",
+    "application/x-sharedlib",
+    "application/x-mach-binary",
+    "application/java-archive",
+    "application/vnd.android.package-archive",
+    "application/x-apple-diskimage",
+}
 
 _KEY_PREFIXES = {
     File.Purpose.AVATAR: "avatars",
@@ -43,7 +65,7 @@ class FileService:
         if retry_after:
             raise RateLimited(retry_after)
 
-        FileService._check_type_and_size(purpose, mime, size)
+        FileService._check_type_and_size(purpose, filename, mime, size)
         if team_id is not None:
             await TeamService.require_member(team_id, user_id)
 
@@ -70,7 +92,11 @@ class FileService:
         )
 
     @staticmethod
-    def _check_type_and_size(purpose: str, mime: str, size: int) -> None:
+    def _check_type_and_size(purpose: str, filename: str, mime: str, size: int) -> None:
+        if FileService._is_program(filename, mime):
+            raise BadRequest(
+                ErrorCode.TYPE_NOT_ALLOWED, "Programs and installers can't be uploaded"
+            )
         if purpose == File.Purpose.ATTACHMENT:
             if size > MAX_ATTACHMENT_SIZE:
                 raise BadRequest(
@@ -86,6 +112,15 @@ class FileService:
             raise BadRequest(
                 ErrorCode.FILE_TOO_LARGE, f"Images can be at most {MAX_IMAGE_SIZE // MB} MB"
             )
+
+    @staticmethod
+    def _is_program(filename: str, mime: str) -> bool:
+        """D-18 by name and declared type. Windows ignores trailing dots and spaces in a name, so
+        "setup.exe." still runs: they are dropped before the extension is read. Parameters such
+        as "; charset=binary" are dropped from the type."""
+        extension = PurePath(filename.rstrip(". ")).suffix.lower()
+        declared = mime.split(";")[0].strip().lower()
+        return extension in BLOCKED_EXTENSIONS or declared in BLOCKED_TYPES
 
     @staticmethod
     def _object_key(purpose: str, user_id: UUID, team_id: UUID | None, file_id: UUID) -> str:
@@ -123,4 +158,54 @@ class FileService:
             mime=mime,
             size=size,
             upload_expires_at=now + timedelta(seconds=storage.UPLOAD_URL_SECONDS),
+        )
+
+    @staticmethod
+    async def confirm(file_id: UUID, user_id: UUID) -> File:
+        """
+        Step 3: copy uploads/{file_id} to the final key, check the copy, mark it ready.
+        A copy that fails a check is deleted with its upload, and so is the file.
+        """
+        file = await FileRepository.get(file_id)
+        if file is None or file.deleted_at is not None:
+            raise NotFound(ErrorCode.FILE_NOT_FOUND)
+        if file.owner_id != user_id:
+            raise PermissionDenied()
+        if file.status == File.Status.READY:
+            return file
+
+        now = timezone.now()
+        if file.upload_expires_at <= now:
+            raise Gone(ErrorCode.UPLOAD_EXPIRED, "The upload URL expired; start again")
+
+        upload_key = f"uploads/{file_id}"
+        if await sync_to_async(storage.head, thread_sensitive=False)(upload_key) is None:
+            raise BadRequest(ErrorCode.UPLOAD_MISSING, "Nothing was uploaded for this file")
+
+        await sync_to_async(storage.copy, thread_sensitive=False)(upload_key, file.object_key)
+        if not await FileService._copy_matches(file):
+            await sync_to_async(storage.delete, thread_sensitive=False)(upload_key, file.object_key)
+            await FileRepository.mark_deleted(file.id, now)
+            raise BadRequest(ErrorCode.UPLOAD_MISMATCH, "The upload doesn't match the file")
+
+        if not await FileRepository.mark_ready(file.id):
+            # another confirm of this file finished first: answer with what it left
+            return await FileService.confirm(file_id, user_id)
+
+        await sync_to_async(storage.delete, thread_sensitive=False)(upload_key)
+        file.status = File.Status.READY
+        return file
+
+    @staticmethod
+    async def _copy_matches(file: File) -> bool:
+        """Size and type from step 1; images must really be that image, attachments no program."""
+        info = await sync_to_async(storage.head, thread_sensitive=False)(file.object_key)
+        if info is None or info.size != file.size or info.content_type != file.mime:
+            return False
+        if file.purpose == File.Purpose.ATTACHMENT:
+            start = await sync_to_async(storage.read_start, thread_sensitive=False)(file.object_key)
+            return not checks.is_program(start)
+        data = await sync_to_async(storage.read_all, thread_sensitive=False)(file.object_key)
+        return (
+            await sync_to_async(checks.detect_image_mime, thread_sensitive=False)(data) == file.mime
         )

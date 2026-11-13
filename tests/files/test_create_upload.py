@@ -98,7 +98,7 @@ async def test_size_limit_itself_is_allowed(async_client, auth, team, purpose, s
     [
         ("../../evil\\name.png", "....evilname.png"),
         ("  photo.png  ", "photo.png"),
-        ("invoice‮fdp.exe", "invoicefdp.exe"),
+        ("notes\u202etxt.pdf", "notestxt.pdf"),
         ("tab\tand\nnewline.png", "tabandnewline.png"),
         ("raport final.pdf", "raport final.pdf"),
     ],
