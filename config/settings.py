@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "authn",
     "teams",
     "channels",
+    "files",
 ]
 
 MIDDLEWARE = [
@@ -106,6 +107,14 @@ JWT_REFRESH_TOKEN_LIFETIME = 2592000  # 30 days
 # reusing a refresh token this soon after its rotation is a retry, not theft
 JWT_REFRESH_REUSE_GRACE = 30  # seconds
 APP_URL = env.str("APP_URL", default="http://127.0.0.1:5173")
+
+# MinIO (D-14, D-16). The internal URL is for chatty-core's own calls (minio:9000 in Docker).
+# The public one only signs URLs: the host is part of the signature, and the browser must reach it.
+MINIO_INTERNAL_URL = env("MINIO_INTERNAL_URL")
+MINIO_PUBLIC_URL = env("MINIO_PUBLIC_URL")
+MINIO_ACCESS_KEY = env("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = env("MINIO_SECRET_KEY")
+MINIO_BUCKET = env("MINIO_BUCKET")
 
 
 # Password validation

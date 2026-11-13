@@ -11,6 +11,8 @@ jobs:
     with:
       needs-postgres: true
       needs-redis: true
+      # Integration tests for files upload to a real MinIO (CHAT-165).
+      needs-minio: true
       test-env: |
         SECRET_KEY=ci-not-secret
         CORE_SERVICE_TOKEN=ci-not-secret

@@ -2,6 +2,7 @@ import pytest
 from django.contrib import admin
 
 from channels.models import Channel, ChannelMember
+from files.models import File
 from teams.models import Invite, Team, TeamMember
 from users.models import User
 
@@ -21,8 +22,8 @@ def test_staff_cannot_delete_users(request_as_staff):
     assert not admin.site._registry[User].has_delete_permission(request_as_staff)
 
 
-@pytest.mark.parametrize("model", [TeamMember, ChannelMember])
-def test_memberships_are_view_only(request_as_staff, model):
+@pytest.mark.parametrize("model", [TeamMember, ChannelMember, File])
+def test_view_only_admins(request_as_staff, model):
     model_admin = admin.site._registry[model]
     assert model_admin.has_view_permission(request_as_staff)
     assert not model_admin.has_add_permission(request_as_staff)

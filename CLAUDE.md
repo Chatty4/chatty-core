@@ -43,7 +43,7 @@ shared/                 code used by more than one app, no business rules
   redis.py              Redis client and rate-limit helpers
   pagination.py         cursor pagination from api-core.md
   events.py             (planned, CHAT-172) Redis publisher for core.events (D-06, D-08)
-  storage.py            (planned, files app) MinIO client and presigned URLs
+  storage.py            MinIO clients and presigned URLs (D-14, D-16)
 authn/                  refresh token model, RS256 JWT issuance, rotation and revocation
   authentication.py     JWTAuthentication: Bearer JWT for /api/core/v1
   models.py             RefreshToken (stores SHA-256 hash only, never the raw token)
