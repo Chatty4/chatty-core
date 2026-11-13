@@ -26,6 +26,7 @@ urlpatterns = [
     path("api/core/v1/", include("users.urls")),
     path("api/core/v1/", include("teams.urls")),
     path("api/core/v1/", include("channels.urls")),
+    path("api/core/v1/", include("files.urls")),
     path("internal/", include("users.internal.urls")),
     path("internal/", include("channels.internal.urls")),
 ]
