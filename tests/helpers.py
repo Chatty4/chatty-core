@@ -25,6 +25,17 @@ async def headers_for(user: User) -> dict:
     return {"Authorization": f"Bearer {tokens.access_token}"}
 
 
+AVATAR_UPLOAD = {"purpose": "avatar", "filename": "me.png", "mime": "image/png", "size": 5}
+
+
+async def post_file(client, headers: dict, **changes):
+    """POST /files with AVATAR_UPLOAD, plus any changed fields (a None value drops the field)."""
+    body = {k: v for k, v in (AVATAR_UPLOAD | changes).items() if v is not None}
+    return await client.post(
+        "/api/core/v1/files", body, content_type="application/json", headers=headers
+    )
+
+
 async def age_rotated_tokens(user: User) -> None:
     """Move rotated tokens past the grace window, so a reuse counts as theft."""
     await RefreshToken.objects.filter(user=user, revoked_at__isnull=False).aupdate(
