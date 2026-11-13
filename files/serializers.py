@@ -48,3 +48,14 @@ class UploadResponse(serializers.Serializer):
     upload_method = serializers.CharField()
     upload_headers = serializers.DictField(child=serializers.CharField())
     expires_at = serializers.DateTimeField()
+
+
+class FileResponse(serializers.Serializer):
+    id = serializers.UUIDField()
+    purpose = serializers.CharField()
+    team_id = serializers.UUIDField(allow_null=True)
+    filename = serializers.CharField()
+    mime = serializers.CharField()
+    size = serializers.IntegerField()
+    status = serializers.CharField()
+    created_at = serializers.DateTimeField()
