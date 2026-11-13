@@ -3,6 +3,7 @@ that was announced (D-15). In CI, needs-minio starts MinIO and creates the bucke
 
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 
 import pytest
 from django.conf import settings
@@ -25,7 +26,17 @@ async def upload(async_client, auth):
 
 
 def put(url: str, data: bytes, headers: dict) -> int:
-    request = urllib.request.Request(url, data=data, method="PUT", headers=headers)
+    """PUT like the browser does. The URL is signed for the public address (D-16), which in the
+    core container is the container itself, so the request goes to MinIO's internal address with
+    the signed address as Host: MinIO checks the signature against Host, as behind a proxy."""
+    signed = urlsplit(url)
+    internal = urlsplit(settings.MINIO_INTERNAL_URL)
+    request = urllib.request.Request(
+        signed._replace(scheme=internal.scheme, netloc=internal.netloc).geturl(),
+        data=data,
+        method="PUT",
+        headers=headers | {"Host": signed.netloc},
+    )
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
             return response.status
