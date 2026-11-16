@@ -17,7 +17,10 @@ from shared import storage
 from shared.codes import ErrorCode
 from shared.exceptions import BadRequest, Conflict, Gone, NotFound, PermissionDenied, RateLimited
 from shared.redis import rate_limit
+from teams.models import TeamMember
+from teams.repositories import TeamMemberRepository, TeamRepository
 from teams.services import TeamService
+from users.repositories import UserRepository
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +52,8 @@ BLOCKED_TYPES = {
     "application/vnd.android.package-archive",
     "application/x-apple-diskimage",
 }
+
+MANAGERS = {TeamMember.Role.OWNER, TeamMember.Role.ADMIN}  # may change a team's icon
 
 _KEY_PREFIXES = {
     File.Purpose.AVATAR: "avatars",
@@ -183,18 +188,11 @@ class FileService:
 
     @staticmethod
     async def delete(file_id: UUID, user_id: UUID) -> None:
-        """Delete my own file that is in no message. The row stays for the cleanup job (D-17)."""
-        file = await FileRepository.get(file_id)
-        if file is None or file.deleted_at is not None:
-            raise NotFound(ErrorCode.FILE_NOT_FOUND)
-        if file.owner_id != user_id:
-            raise PermissionDenied()
-        if file.attached_at is not None:
-            raise Conflict(ErrorCode.FILE_ATTACHED, "The file is in a message; delete the message")
-
-        if not await FileRepository.mark_deleted_unattached(file.id, user_id, timezone.now()):
-            # attached or deleted since the read: answer with what that left
-            return await FileService.delete(file_id, user_id)
+        """
+        Delete my own file that is in no message, and remove it as my avatar or a team's icon.
+        The row stays for the cleanup job (D-17).
+        """
+        file = await sync_to_async(FileService._delete_sync)(file_id, user_id, timezone.now())
 
         try:
             await sync_to_async(storage.delete, thread_sensitive=False)(
@@ -202,6 +200,31 @@ class FileService:
             )
         except Exception:
             logger.exception("Failed to delete the objects of file %s", file.id)
+
+    @staticmethod
+    @transaction.atomic
+    def _delete_sync(file_id: UUID, user_id: UUID, now: datetime) -> File:
+        """Under the file's row lock, like PUT /me and PUT /teams, so they never overlap."""
+        file = FileRepository.lock_sync(file_id)
+        if file is None or file.deleted_at is not None:
+            raise NotFound(ErrorCode.FILE_NOT_FOUND)
+        if file.owner_id != user_id:
+            raise PermissionDenied()
+        if file.attached_at is not None:
+            raise Conflict(ErrorCode.FILE_ATTACHED, "The file is in a message; delete the message")
+
+        if file.purpose == File.Purpose.AVATAR:
+            UserRepository.clear_avatar_sync(user_id, file.id)
+        elif file.purpose == File.Purpose.TEAM_ICON:
+            assert file.team_id is not None
+            if TeamRepository.has_icon_sync(file.team_id, file.id):
+                member = TeamMemberRepository.get_member_sync(file.team_id, user_id)
+                if member is None or member.role not in MANAGERS:
+                    raise PermissionDenied()
+                TeamRepository.clear_icon_sync(file.team_id, file.id)
+
+        FileRepository.mark_deleted_sync(file.id, now)
+        return file
 
     @staticmethod
     async def confirm(file_id: UUID, user_id: UUID) -> File:

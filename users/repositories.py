@@ -40,6 +40,11 @@ class UserRepository:
         return user
 
     @staticmethod
+    def clear_avatar_sync(user_id: UUID, file_id: UUID) -> None:
+        """Remove the user's avatar if it is this file."""
+        User.objects.filter(id=user_id, avatar_id=file_id).update(avatar=None)
+
+    @staticmethod
     async def deactivate_user(user_ids: list[UUID]) -> list[UUID]:
         """Deactivate the active users among user_ids and return their ids."""
         active = User.objects.filter(id__in=user_ids, is_active=True)
