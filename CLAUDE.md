@@ -43,7 +43,8 @@ shared/                 code used by more than one app, no business rules
   redis.py              Redis client and rate-limit helpers
   pagination.py         cursor pagination from api-core.md
   events.py             (planned, CHAT-172) Redis publisher for core.events (D-06, D-08)
-  storage.py            MinIO clients and presigned URLs (D-14, D-16)
+  storage.py            MinIO clients, presigned PUT and GET URLs, object reads, copies and
+                        deletes (D-14, D-16). Blocking calls: wrap in sync_to_async
 authn/                  refresh token model, RS256 JWT issuance, rotation and revocation
   authentication.py     JWTAuthentication: Bearer JWT for /api/core/v1
   models.py             RefreshToken (stores SHA-256 hash only, never the raw token)
@@ -57,7 +58,9 @@ authn/                  refresh token model, RS256 JWT issuance, rotation and re
   services.py           business rules, transactions, events. No DRF, no request objects
                         (a package in teams)
   schemas.py            dataclasses that services return (TeamResult, ChannelAccess, ...)
-  access.py             (optional) pure permission rules, no DB: channels/access.py (read / write / manage)
+  access.py             (optional) pure permission rules, no DB: channels/access.py (read / write / manage),
+                        files/access.py (which file can be an avatar or a team icon)
+  checks.py             (files only) what confirm reads from the bytes: image format, programs (D-18)
   serializers.py        request validation and response shapes
   views.py              public API endpoints (thin)
   admin.py              Django admin; business actions call services (users: deactivate)
@@ -71,6 +74,8 @@ authn/                  refresh token model, RS256 JWT issuance, rotation and re
     urls.py
   migrations/
 tests/<app>/            one file per endpoint or rule (test_join_channel.py, test_require_access.py, ...)
+tests/helpers.py        shared plain helpers: make_user, headers_for, make_file, put_upload, ...
+tests/files/conftest.py remove_objects: deletes the MinIO objects a test's files made
 ```
 
 Start each layer as one module. Turn it into a package (`services/__init__.py`, `services/invites.py`, ...)

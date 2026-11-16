@@ -17,9 +17,8 @@ from shared import storage
 from shared.codes import ErrorCode
 from shared.exceptions import BadRequest, Conflict, Gone, NotFound, PermissionDenied, RateLimited
 from shared.redis import rate_limit
-from teams.models import TeamMember
 from teams.repositories import TeamMemberRepository, TeamRepository
-from teams.services import TeamService
+from teams.services.teams import MANAGERS, TeamService
 from users.repositories import UserRepository
 
 logger = logging.getLogger(__name__)
@@ -52,8 +51,6 @@ BLOCKED_TYPES = {
     "application/vnd.android.package-archive",
     "application/x-apple-diskimage",
 }
-
-MANAGERS = {TeamMember.Role.OWNER, TeamMember.Role.ADMIN}  # may change a team's icon
 
 _KEY_PREFIXES = {
     File.Purpose.AVATAR: "avatars",
