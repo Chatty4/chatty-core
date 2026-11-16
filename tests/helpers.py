@@ -6,6 +6,7 @@ from tests.helpers import headers_for, make_user
 import io
 import urllib.error
 import urllib.request
+import uuid
 import zipfile
 from datetime import timedelta
 from urllib.parse import urlsplit
@@ -17,6 +18,9 @@ from PIL import Image
 
 from authn.models import RefreshToken
 from authn.services import AuthnService
+from files.models import File
+from shared import storage
+from teams.models import Team
 from users.models import User
 
 
@@ -43,22 +47,78 @@ async def post_file(client, headers: dict, **changes):
 
 
 def put_upload(url: str, data: bytes, headers: dict) -> int:
-    """PUT like the browser does; returns the status. The URL is signed for the public address
-    (D-16), which in the core container is the container itself, so the request goes to MinIO's
-    internal address with the signed address as Host: MinIO checks the signature against Host."""
-    signed = urlsplit(url)
-    internal = urlsplit(settings.MINIO_INTERNAL_URL)
-    request = urllib.request.Request(
-        signed._replace(scheme=internal.scheme, netloc=internal.netloc).geturl(),
-        data=data,
-        method="PUT",
-        headers=headers | {"Host": signed.netloc},
-    )
+    """PUT like the browser does; returns the status."""
+    request = _signed_request(url, "PUT", data, headers)
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
             return response.status
     except urllib.error.HTTPError as e:
         return e.code
+
+
+def get_download(url: str) -> tuple[int, dict[str, str], bytes]:
+    """GET a download URL like the browser does; returns the status, headers and body."""
+    request = _signed_request(url, "GET")
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.status, dict(response.headers), response.read()
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers), e.read()
+
+
+def _signed_request(
+    url: str, method: str, data: bytes | None = None, headers: dict | None = None
+) -> urllib.request.Request:
+    """The URL is signed for the public address (D-16), which in the core container is the
+    container itself, so the request goes to MinIO's internal address with the signed address
+    as Host: MinIO checks the signature against Host."""
+    signed = urlsplit(url)
+    internal = urlsplit(settings.MINIO_INTERNAL_URL)
+    return urllib.request.Request(
+        signed._replace(scheme=internal.scheme, netloc=internal.netloc).geturl(),
+        data=data,
+        method=method,
+        headers=(headers or {}) | {"Host": signed.netloc},
+    )
+
+
+def put_object(key: str, data: bytes, content_type: str) -> None:
+    """Write an object without the signed URL, to fake what a URL would refuse."""
+    storage.internal_client().put_object(
+        Bucket=settings.MINIO_BUCKET, Key=key, Body=data, ContentType=content_type
+    )
+
+
+_KEY_PREFIXES = {"avatar": "avatars", "team_icon": "team-icons", "attachment": "attachments"}
+
+
+async def make_file(
+    owner: User,
+    purpose: str = "avatar",
+    team: Team | None = None,
+    data: bytes | None = None,
+    **changes,
+) -> File:
+    """A ready PNG of owner, at its final key; changes override fields (status, deleted_at, ...).
+    With data, the object is put in MinIO too."""
+    file_id = uuid.uuid4()
+    folder = team.id if team else owner.id
+    fields = {
+        "id": file_id,
+        "owner": owner,
+        "team": team,
+        "purpose": purpose,
+        "object_key": f"{_KEY_PREFIXES[purpose]}/{folder}/{file_id}",
+        "filename": "me.png",
+        "mime": "image/png",
+        "size": len(data) if data is not None else 5,
+        "status": File.Status.READY,
+        "upload_expires_at": timezone.now() + timedelta(minutes=10),
+    }
+    file = await File.objects.acreate(**(fields | changes))
+    if data is not None:
+        put_object(file.object_key, data, file.mime)
+    return file
 
 
 def image_bytes(fmt: str, size: tuple[int, int] = (64, 64)) -> bytes:

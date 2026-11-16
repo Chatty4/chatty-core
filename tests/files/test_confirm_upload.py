@@ -4,7 +4,6 @@ MinIO and creates the bucket."""
 from datetime import timedelta
 
 import pytest
-from django.conf import settings
 from django.utils import timezone
 
 from files.models import File
@@ -17,22 +16,14 @@ from tests.helpers import (
     image_bytes,
     make_user,
     post_file,
+    put_object,
     put_upload,
     zip_bytes,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.usefixtures("remove_objects")]
 
 PNG = image_bytes("PNG")
-
-
-@pytest.fixture(autouse=True)
-async def remove_objects():
-    """Every object a test made: the uploads and the final keys of its files."""
-    yield
-    keys = [key async for key in File.objects.values_list("object_key", flat=True)]
-    keys += [f"uploads/{file_id}" async for file_id in File.objects.values_list("id", flat=True)]
-    storage.delete(*keys)
 
 
 async def start_upload(client, auth, data: bytes, **changes) -> str:
@@ -44,13 +35,6 @@ async def start_upload(client, auth, data: bytes, **changes) -> str:
 
 async def confirm(client, file_id, auth):
     return await client.post(f"/api/core/v1/files/{file_id}/confirm", headers=auth)
-
-
-def put_object(key: str, data: bytes, content_type: str) -> None:
-    """Write an object without the signed URL, to fake what a URL would refuse."""
-    storage.internal_client().put_object(
-        Bucket=settings.MINIO_BUCKET, Key=key, Body=data, ContentType=content_type
-    )
 
 
 async def assert_mismatch(client, file_id, auth) -> None:
