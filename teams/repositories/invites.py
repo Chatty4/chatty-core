@@ -16,11 +16,11 @@ class InviteRepository:
     @staticmethod
     async def get_by_code(code: str) -> Invite | None:
         """
-        Return an invite by code with its team loaded, or None if
+        Return an invite by code with its team and the team's icon loaded, or None if
         not found or team is deleted.
         """
         return await (
-            Invite.objects.select_related("team")
+            Invite.objects.select_related("team__icon")
             .filter(code=code, team__deleted_at__isnull=True)
             .afirst()
         )

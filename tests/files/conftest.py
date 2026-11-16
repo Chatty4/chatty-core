@@ -1,5 +1,7 @@
 import pytest
 
+from files.models import File
+from shared import storage
 from shared.redis import get_redis_client
 from teams.models import Team, TeamMember
 from tests.helpers import headers_for, make_user
@@ -30,3 +32,12 @@ async def team(user):
     team = await Team.objects.acreate(name="Backend", created_by=user)
     await TeamMember.objects.acreate(team=team, user=user, role=TeamMember.Role.OWNER)
     return team
+
+
+@pytest.fixture
+async def remove_objects():
+    """Removes every object the test's files have in MinIO: final keys and uploads."""
+    yield
+    keys = [key async for key in File.objects.values_list("object_key", flat=True)]
+    keys += [f"uploads/{file_id}" async for file_id in File.objects.values_list("id", flat=True)]
+    storage.delete(*keys)

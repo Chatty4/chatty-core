@@ -14,7 +14,7 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ["email", "display_name"]
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Profile", {"fields": ("display_name", "avatar_id", "timezone")}),
+        ("Profile", {"fields": ("display_name", "avatar", "timezone")}),
         ("Permissions", {"fields": ("is_active", "is_staff")}),
     )
     add_fieldsets = (
@@ -27,6 +27,7 @@ class UserAdmin(BaseUserAdmin):
         ),
     )
     filter_horizontal = ()
+    raw_id_fields = ["avatar"]  # a plain id box, not a dropdown of every file
 
     # deactivation only through the action below, so the future
     # user.deactivated event is never skipped

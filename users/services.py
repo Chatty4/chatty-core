@@ -8,6 +8,8 @@ from django.db import IntegrityError, transaction
 from authn.schemas import TokenPairSchema
 from authn.services import AuthnService
 from channels.repositories import ChannelMemberRepository, ChannelRepository
+from files import access
+from files.repositories import FileRepository
 from shared import events
 from shared.codes import ErrorCode
 from shared.events import EventType
@@ -84,8 +86,24 @@ class UserService:
     async def update_profile(
         user: User, display_name: str, timezone: str, avatar_file_id: UUID | None
     ) -> Me:
-        user = await UserRepository.update_profile(user, display_name, timezone, avatar_file_id)
+        user = await sync_to_async(UserService._update_profile_sync)(
+            user, display_name, timezone, avatar_file_id
+        )
         return await UserService.get_me(user)
+
+    @staticmethod
+    @transaction.atomic
+    def _update_profile_sync(
+        user: User, display_name: str, timezone: str, avatar_file_id: UUID | None
+    ) -> User:
+        """Checks the avatar under its row lock, so a delete of the file can't overlap."""
+        if avatar_file_id is not None:
+            file = FileRepository.lock_sync(avatar_file_id)
+            if file is None or not access.can_use_as_avatar(file, user.id):
+                raise BadRequest(
+                    ErrorCode.INVALID_FILE, "The avatar must be a ready avatar you uploaded"
+                )
+        return UserRepository.update_profile_sync(user, display_name, timezone, avatar_file_id)
 
     @staticmethod
     async def change_password(

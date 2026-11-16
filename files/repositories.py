@@ -76,3 +76,13 @@ class FileRepository:
     async def mark_deleted(file_id: UUID, now: datetime) -> None:
         """The file can't be used anymore, the cleanup job removes the row."""
         await File.objects.filter(id=file_id, deleted_at__isnull=True).aupdate(deleted_at=now)
+
+    @staticmethod
+    def mark_deleted_sync(file_id: UUID, now: datetime) -> None:
+        File.objects.filter(id=file_id, deleted_at__isnull=True).update(deleted_at=now)
+
+    @staticmethod
+    def lock_sync(file_id: UUID) -> File | None:
+        """The file, its row locked until the transaction ends. Deleting it and using it as an
+        avatar or a team icon all lock it first, so they never overlap."""
+        return File.objects.select_for_update(no_key=True).filter(id=file_id).first()

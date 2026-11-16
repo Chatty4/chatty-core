@@ -7,7 +7,10 @@ from django.db import models
 class Team(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
-    icon_id = models.UUIDField(null=True, blank=True)
+    icon = models.ForeignKey(
+        "files.File", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    icon_id: uuid.UUID | None
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

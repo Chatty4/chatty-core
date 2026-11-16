@@ -10,7 +10,7 @@ from django.utils import timezone
 from channels.models import ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
 from channels.schemas import MembershipAction, MembershipChanged
-from shared import events
+from shared import events, storage
 from shared.codes import ErrorCode
 from shared.events import EventType
 from shared.exceptions import Conflict, Gone, NotFound, PermissionDenied, RateLimited
@@ -131,12 +131,13 @@ class InviteService:
         valid, reason = InviteService._check_validity(invite)
         member_count = await TeamMemberRepository.count_members(invite.team.id)
 
-        # TODO: presigned URL once file uploads are done
+        icon = invite.team.icon
+        icon_url = storage.presign_get(icon.object_key, icon.mime) if icon else None
         return InviteLookupResult(
             code=code,
             valid=valid,
             reason=reason,
-            team=TeamPreview(name=invite.team.name, icon_url=None, member_count=member_count),
+            team=TeamPreview(name=invite.team.name, icon_url=icon_url, member_count=member_count),
             expires_at=invite.expires_at,
         )
 

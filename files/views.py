@@ -19,3 +19,13 @@ class FileConfirmView(AsyncAPIView):
     async def post(self, request, file_id: UUID):
         file = await FileService.confirm(file_id, request.user.id)
         return Response(FileResponse(file).data)
+
+
+class FileDetailView(AsyncAPIView):
+    async def get(self, request, file_id: UUID):
+        url = await FileService.download_url(file_id, request.user.id)
+        return Response(status=302, headers={"Location": url})
+
+    async def delete(self, request, file_id: UUID):
+        await FileService.delete(file_id, request.user.id)
+        return Response(status=204)

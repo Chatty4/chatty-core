@@ -30,7 +30,10 @@ class User(AbstractBaseUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
     display_name = models.CharField(max_length=60)
-    avatar_id = models.UUIDField(null=True, blank=True)
+    avatar = models.ForeignKey(
+        "files.File", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    avatar_id: uuid.UUID | None
     timezone = models.CharField(max_length=64, default="UTC")
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

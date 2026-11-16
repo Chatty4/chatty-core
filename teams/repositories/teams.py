@@ -47,17 +47,27 @@ class TeamRepository:
         return Team.objects.filter(created_by_id=user_id, deleted_at__isnull=True).count()
 
     @staticmethod
+    def has_icon_sync(team_id: UUID, file_id: UUID) -> bool:
+        """Whether this file is the icon of the live team."""
+        return Team.objects.filter(id=team_id, icon_id=file_id, deleted_at__isnull=True).exists()
+
+    @staticmethod
     def create_sync(name: str, created_by_id: UUID) -> Team:
         """Create and return a new team."""
         return Team.objects.create(name=name, created_by_id=created_by_id)
 
     @staticmethod
-    async def update(team: Team, name: str, icon_id: UUID | None) -> Team:
+    def update_sync(team: Team, name: str, icon_id: UUID | None) -> Team:
         """Update and return the team's name and icon"""
         team.name = name
         team.icon_id = icon_id
-        await team.asave(update_fields=["name", "icon_id"])
+        team.save(update_fields=["name", "icon"])
         return team
+
+    @staticmethod
+    def clear_icon_sync(team_id: UUID, file_id: UUID) -> None:
+        """Remove the team's icon if it is this file."""
+        Team.objects.filter(id=team_id, icon_id=file_id).update(icon=None)
 
     @staticmethod
     async def delete(team: Team) -> None:

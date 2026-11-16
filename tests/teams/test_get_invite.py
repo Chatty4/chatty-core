@@ -1,11 +1,15 @@
 from datetime import timedelta
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.utils import timezone
 
+from shared import storage
 from shared.redis import clear_rate_limit, get_redis_client
 from teams.models import Invite, Team, TeamMember
+from tests.helpers import make_file
 from users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -164,6 +168,21 @@ async def test_get_invite_team_icon_url_is_null(async_client, invite):
     body = (await async_client.get(url(invite.code))).json()
 
     assert body["team"]["icon_url"] is None
+
+
+async def test_get_invite_team_icon_url_is_signed(async_client, invite, team, owner):
+    icon = await make_file(owner, "team_icon", team)
+    await Team.objects.filter(id=team.id).aupdate(icon=icon)
+
+    body = (await async_client.get(url(invite.code))).json()
+
+    icon_url = urlsplit(body["team"]["icon_url"])
+    query = parse_qs(icon_url.query)
+    assert icon_url.netloc == urlsplit(settings.MINIO_PUBLIC_URL).netloc  # D-16
+    assert icon_url.path == f"/{settings.MINIO_BUCKET}/{icon.object_key}"
+    assert query["X-Amz-Expires"] == [str(storage.DOWNLOAD_URL_SECONDS)]
+    assert query["response-content-type"] == ["image/png"]
+    assert query["response-content-disposition"] == ["inline"]
 
 
 async def test_get_invite_team_member_count(async_client, invite, team):
