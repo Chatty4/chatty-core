@@ -7,10 +7,12 @@ from django.db import transaction
 from channels.models import Channel, ChannelMember
 from channels.repositories import ChannelMemberRepository, ChannelRepository
 from channels.schemas import MembershipAction, MembershipChanged
+from files import access
+from files.repositories import FileRepository
 from shared import events
 from shared.codes import ErrorCode
 from shared.events import EventType
-from shared.exceptions import Conflict, NotFound, PermissionDenied
+from shared.exceptions import BadRequest, Conflict, NotFound, PermissionDenied
 from teams.models import Team, TeamMember
 from teams.repositories import InviteRepository, TeamMemberRepository, TeamRepository
 from teams.schemas import (
@@ -151,15 +153,21 @@ class TeamService:
     async def update(
         team_id: UUID, user_id: UUID, name: str, icon_file_id: UUID | None
     ) -> TeamDetailResult:
-        """
-        TODO: validate icon_file_id against the files model (ready,
-        team_icon purpose, same team).
-        """
-        team, member = await TeamService.require_member(
-            team_id, user_id, roles={TeamMember.Role.OWNER, TeamMember.Role.ADMIN}
-        )
-        team = await TeamRepository.update(team, name=name, icon_id=icon_file_id)
+        team, member = await TeamService.require_member(team_id, user_id, roles=MANAGERS)
+        team = await sync_to_async(TeamService._update_sync)(team, name, icon_file_id)
         return await TeamService._detail(team, member)
+
+    @staticmethod
+    @transaction.atomic
+    def _update_sync(team: Team, name: str, icon_file_id: UUID | None) -> Team:
+        """Checks the icon under its row lock, so a delete of the file can't overlap."""
+        if icon_file_id is not None:
+            file = FileRepository.lock_sync(icon_file_id)
+            if file is None or not access.can_use_as_team_icon(file, team.id):
+                raise BadRequest(
+                    ErrorCode.INVALID_FILE, "The icon must be a ready icon of this team"
+                )
+        return TeamRepository.update_sync(team, name, icon_file_id)
 
     @staticmethod
     async def _detail(team: Team, member: TeamMember) -> TeamDetailResult:

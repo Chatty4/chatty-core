@@ -52,11 +52,11 @@ class TeamRepository:
         return Team.objects.create(name=name, created_by_id=created_by_id)
 
     @staticmethod
-    async def update(team: Team, name: str, icon_id: UUID | None) -> Team:
+    def update_sync(team: Team, name: str, icon_id: UUID | None) -> Team:
         """Update and return the team's name and icon"""
         team.name = name
         team.icon_id = icon_id
-        await team.asave(update_fields=["name", "icon_id"])
+        team.save(update_fields=["name", "icon"])
         return team
 
     @staticmethod

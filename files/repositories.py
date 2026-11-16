@@ -84,3 +84,9 @@ class FileRepository:
             id=file_id, owner_id=owner_id, attached_at__isnull=True, deleted_at__isnull=True
         ).aupdate(deleted_at=now)
         return updated == 1
+
+    @staticmethod
+    def lock_sync(file_id: UUID) -> File | None:
+        """The file, its row locked until the transaction ends. Deleting it and using it as an
+        avatar or a team icon all lock it first, so they never overlap."""
+        return File.objects.select_for_update(no_key=True).filter(id=file_id).first()

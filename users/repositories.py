@@ -29,13 +29,13 @@ class UserRepository:
         )
 
     @staticmethod
-    async def update_profile(
+    def update_profile_sync(
         user: User, display_name: str, timezone: str, avatar_id: UUID | None
     ) -> User:
         user.display_name = display_name
         user.timezone = timezone
         user.avatar_id = avatar_id
-        await user.asave(update_fields=["display_name", "timezone", "avatar_id"])
+        user.save(update_fields=["display_name", "timezone", "avatar"])
 
         return user
 
