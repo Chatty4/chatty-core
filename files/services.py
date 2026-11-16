@@ -1,3 +1,4 @@
+import logging
 import math
 import uuid
 from datetime import datetime, timedelta
@@ -14,9 +15,11 @@ from files.repositories import FileRepository
 from files.schemas import UploadResult
 from shared import storage
 from shared.codes import ErrorCode
-from shared.exceptions import BadRequest, Gone, NotFound, PermissionDenied, RateLimited
+from shared.exceptions import BadRequest, Conflict, Gone, NotFound, PermissionDenied, RateLimited
 from shared.redis import rate_limit
 from teams.services import TeamService
+
+logger = logging.getLogger(__name__)
 
 UPLOAD_LIMIT = 30  # POST /files per user
 UPLOAD_WINDOW = 60
@@ -177,6 +180,28 @@ class FileService:
             await TeamService.require_member(file.team_id, user_id)
 
         return storage.presign_get(file.object_key, file.mime)
+
+    @staticmethod
+    async def delete(file_id: UUID, user_id: UUID) -> None:
+        """Delete my own file that is in no message. The row stays for the cleanup job (D-17)."""
+        file = await FileRepository.get(file_id)
+        if file is None or file.deleted_at is not None:
+            raise NotFound(ErrorCode.FILE_NOT_FOUND)
+        if file.owner_id != user_id:
+            raise PermissionDenied()
+        if file.attached_at is not None:
+            raise Conflict(ErrorCode.FILE_ATTACHED, "The file is in a message; delete the message")
+
+        if not await FileRepository.mark_deleted_unattached(file.id, user_id, timezone.now()):
+            # attached or deleted since the read: answer with what that left
+            return await FileService.delete(file_id, user_id)
+
+        try:
+            await sync_to_async(storage.delete, thread_sensitive=False)(
+                file.object_key, f"uploads/{file.id}"
+            )
+        except Exception:
+            logger.exception("Failed to delete the objects of file %s", file.id)
 
     @staticmethod
     async def confirm(file_id: UUID, user_id: UUID) -> File:

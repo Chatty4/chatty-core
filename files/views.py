@@ -25,3 +25,7 @@ class FileDetailView(AsyncAPIView):
     async def get(self, request, file_id: UUID):
         url = await FileService.download_url(file_id, request.user.id)
         return Response(status=302, headers={"Location": url})
+
+    async def delete(self, request, file_id: UUID):
+        await FileService.delete(file_id, request.user.id)
+        return Response(status=204)
