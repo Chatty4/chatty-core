@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
 
 UPLOAD_URL_SECONDS = 600
+DOWNLOAD_URL_SECONDS = 300
 READ_START_BYTES = 8192  # what filetype looks at
 
 _REGION = "us-east-1"
@@ -60,6 +61,20 @@ def presign_put(key: str, mime: str, size: int, expires: int = UPLOAD_URL_SECOND
         },
         ExpiresIn=expires,
         HttpMethod="PUT",
+    )
+
+
+def presign_get(key: str, mime: str, expires: int = DOWNLOAD_URL_SECONDS) -> str:
+    """GET URL for key that the browser shows inline, as mime. Never log it."""
+    return public_client().generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": settings.MINIO_BUCKET,
+            "Key": key,
+            "ResponseContentType": mime,
+            "ResponseContentDisposition": "inline",
+        },
+        ExpiresIn=expires,
     )
 
 
