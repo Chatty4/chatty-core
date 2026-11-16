@@ -161,6 +161,24 @@ class FileService:
         )
 
     @staticmethod
+    async def download_url(file_id: UUID, user_id: UUID) -> str:
+        """A presigned GET URL for an avatar or a team icon (D-16). Attachments: chatty-chat."""
+        file = await FileRepository.get(file_id)
+        if file is None or file.deleted_at is not None or file.status != File.Status.READY:
+            raise NotFound(ErrorCode.FILE_NOT_FOUND)
+
+        if file.purpose == File.Purpose.ATTACHMENT:
+            raise BadRequest(
+                ErrorCode.USE_CHATTY_CHAT, "Attachments are downloaded through chatty-chat"
+            )
+
+        if file.purpose == File.Purpose.TEAM_ICON:
+            assert file.team_id is not None
+            await TeamService.require_member(file.team_id, user_id)
+
+        return storage.presign_get(file.object_key, file.mime)
+
+    @staticmethod
     async def confirm(file_id: UUID, user_id: UUID) -> File:
         """
         Step 3: copy uploads/{file_id} to the final key, check the copy, mark it ready.
