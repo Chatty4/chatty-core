@@ -76,3 +76,11 @@ class FileRepository:
     async def mark_deleted(file_id: UUID, now: datetime) -> None:
         """The file can't be used anymore, the cleanup job removes the row."""
         await File.objects.filter(id=file_id, deleted_at__isnull=True).aupdate(deleted_at=now)
+
+    @staticmethod
+    async def mark_deleted_unattached(file_id: UUID, owner_id: UUID, now: datetime) -> bool:
+        """DELETE /files: only the owner's file, in no message, not deleted. False if none."""
+        updated = await File.objects.filter(
+            id=file_id, owner_id=owner_id, attached_at__isnull=True, deleted_at__isnull=True
+        ).aupdate(deleted_at=now)
+        return updated == 1
