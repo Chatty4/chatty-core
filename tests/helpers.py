@@ -3,16 +3,22 @@
 from tests.helpers import headers_for, make_user
 """
 
+import asyncio
 import io
+import time
 import urllib.error
 import urllib.request
 import uuid
 import zipfile
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import timedelta
+from typing import Any
 from urllib.parse import urlsplit
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from django.db import connections
 from django.utils import timezone
 from PIL import Image
 
@@ -148,3 +154,41 @@ async def age_rotated_tokens(user: User) -> None:
     await RefreshToken.objects.filter(user=user, revoked_at__isnull=False).aupdate(
         revoked_at=timezone.now() - timedelta(seconds=settings.JWT_REFRESH_REUSE_GRACE + 1)
     )
+
+
+def hold_first_lock(monkeypatch, cls: type, *names: str) -> None:
+    """The first call to any of these lock methods holds its rows for a while, so a call
+    started meanwhile has to wait for that transaction."""
+    calls = []
+    for name in names:
+        original = getattr(cls, name)
+
+        def slow(arg, original=original):
+            locked = original(arg)
+            if not calls:
+                calls.append(arg)
+                time.sleep(0.5)
+            return locked
+
+        monkeypatch.setattr(cls, name, staticmethod(slow))
+
+
+async def run_overlapping(
+    first: Callable[[], Any], second: Callable[[], Any]
+) -> tuple[Future, Future]:
+    """Each call in its own thread and connection, like two uvicorn workers; first starts first.
+    Returns their futures: .result() gives the value or raises the error."""
+
+    def call(fn: Callable[[], Any]) -> Any:
+        try:
+            return fn()
+        finally:
+            connections.close_all()
+
+    def run() -> tuple[Future, Future]:
+        with ThreadPoolExecutor(2) as pool:
+            started = pool.submit(call, first)
+            time.sleep(0.15)
+            return started, pool.submit(call, second)
+
+    return await asyncio.to_thread(run)

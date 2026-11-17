@@ -277,13 +277,13 @@ class FileService:
     @staticmethod
     async def attach(file_ids: list[UUID], user_id: UUID, channel_id: UUID) -> list[File]:
         """Internal: mark all the files of a message attached, or none if one fails (D-03)."""
-        return await sync_to_async(FileService.attach_sync)(
+        return await sync_to_async(FileService._attach_sync)(
             file_ids, user_id, channel_id, timezone.now()
         )
 
     @staticmethod
     @transaction.atomic
-    def attach_sync(
+    def _attach_sync(
         file_ids: list[UUID], user_id: UUID, channel_id: UUID, now: datetime
     ) -> list[File]:
         """Under the files' row lock, like delete and the cleanup job, so a file can't be deleted or
