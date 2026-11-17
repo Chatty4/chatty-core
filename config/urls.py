@@ -29,6 +29,7 @@ urlpatterns = [
     path("api/core/v1/", include("files.urls")),
     path("internal/", include("users.internal.urls")),
     path("internal/", include("channels.internal.urls")),
+    path("internal/", include("files.internal.urls")),
 ]
 
 handler404 = "config.views.not_found"
