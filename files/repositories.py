@@ -86,6 +86,13 @@ class FileRepository:
         File.objects.filter(id__in=file_ids).update(attached_at=now)
 
     @staticmethod
+    def mark_detached_sync(file_ids: list[UUID], now: datetime) -> None:
+        """Attachments not deleted yet: out of their message, and deleted. Others are skipped."""
+        File.objects.filter(
+            id__in=file_ids, purpose=File.Purpose.ATTACHMENT, deleted_at__isnull=True
+        ).update(attached_at=None, deleted_at=now)
+
+    @staticmethod
     def lock_sync(file_id: UUID) -> File | None:
         """The file, its row locked until the transaction ends. Deleting it and using it as an
         avatar or a team icon all lock it first, so they never overlap."""

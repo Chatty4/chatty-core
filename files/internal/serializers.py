@@ -3,9 +3,7 @@ from rest_framework import serializers
 MAX_FILES = 10
 
 
-class AttachRequest(serializers.Serializer):
-    user_id = serializers.UUIDField()
-    channel_id = serializers.UUIDField()
+class DetachRequest(serializers.Serializer):
     file_ids = serializers.ListField(
         child=serializers.UUIDField(), min_length=1, max_length=MAX_FILES
     )
@@ -14,6 +12,13 @@ class AttachRequest(serializers.Serializer):
         if len(set(value)) != len(value):
             raise serializers.ValidationError("A file is in the list twice", code="invalid")
         return value
+
+
+class AttachRequest(DetachRequest):
+    """The same file_ids as DetachRequest, plus the sender and the channel."""
+
+    user_id = serializers.UUIDField()
+    channel_id = serializers.UUIDField()
 
 
 class AttachmentResponse(serializers.Serializer):

@@ -304,6 +304,19 @@ class FileService:
         return files
 
     @staticmethod
+    async def detach(file_ids: list[UUID]) -> None:
+        """Internal: the files of a deleted or unsaved message are deleted (D-03). The cleanup
+        job removes them from MinIO."""
+        await sync_to_async(FileService._detach_sync)(file_ids, timezone.now())
+
+    @staticmethod
+    @transaction.atomic
+    def _detach_sync(file_ids: list[UUID], now: datetime) -> None:
+        """Locks the files in id order first, like attach, so the two can't deadlock."""
+        FileRepository.lock_many_sync(file_ids)
+        FileRepository.mark_detached_sync(file_ids, now)
+
+    @staticmethod
     def _check_attachable(file: File | None, file_id: UUID, user_id: UUID, team_id: UUID) -> File:
         """The checks from api-internal.md, in order. Errors name the file in fields.file_id."""
         fields = {"file_id": str(file_id)}
