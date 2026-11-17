@@ -69,8 +69,12 @@ class ChannelRepository:
 
     @staticmethod
     def get_team_id_sync(channel_id: UUID) -> UUID | None:
-        """The team of the channel, or None if there is no such channel."""
-        return Channel.objects.filter(id=channel_id).values_list("team_id", flat=True).first()
+        """The team of the channel, or None if there is no such channel or its team was deleted."""
+        return (
+            Channel.objects.filter(id=channel_id, team__deleted_at__isnull=True)
+            .values_list("team_id", flat=True)
+            .first()
+        )
 
     @staticmethod
     def create_sync(
