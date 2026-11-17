@@ -9,6 +9,7 @@ from asgiref.sync import sync_to_async
 from django.db import transaction
 from django.utils import timezone
 
+from channels.repositories.channels import ChannelRepository
 from files import checks
 from files.models import File
 from files.repositories import FileRepository
@@ -272,3 +273,67 @@ class FileService:
         return (
             await sync_to_async(checks.detect_image_mime, thread_sensitive=False)(data) == file.mime
         )
+
+    @staticmethod
+    async def attach(file_ids: list[UUID], user_id: UUID, channel_id: UUID) -> list[File]:
+        """Internal: mark all the files of a message attached, or none if one fails (D-03)."""
+        return await sync_to_async(FileService._attach_sync)(
+            file_ids, user_id, channel_id, timezone.now()
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def _attach_sync(
+        file_ids: list[UUID], user_id: UUID, channel_id: UUID, now: datetime
+    ) -> list[File]:
+        """Under the files' row lock, like delete and the cleanup job, so a file can't be deleted or
+        attached elsewhere meanwhile."""
+        team_id = ChannelRepository.get_team_id_sync(channel_id)
+        if team_id is None:
+            raise NotFound(ErrorCode.CHANNEL_NOT_FOUND)
+
+        found = FileRepository.lock_many_sync(file_ids)
+        files = [
+            FileService._check_attachable(found.get(file_id), file_id, user_id, team_id)
+            for file_id in file_ids
+        ]
+
+        FileRepository.mark_attached_sync(file_ids, now)
+        for file in files:
+            file.attached_at = now
+        return files
+
+    @staticmethod
+    async def detach(file_ids: list[UUID]) -> None:
+        """Internal: the files of a deleted or unsaved message are deleted (D-03). The cleanup
+        job removes them from MinIO."""
+        await sync_to_async(FileService._detach_sync)(file_ids, timezone.now())
+
+    @staticmethod
+    @transaction.atomic
+    def _detach_sync(file_ids: list[UUID], now: datetime) -> None:
+        """Locks the files in id order first, like attach, so the two can't deadlock."""
+        FileRepository.lock_many_sync(file_ids)
+        FileRepository.mark_detached_sync(file_ids, now)
+
+    @staticmethod
+    def _check_attachable(file: File | None, file_id: UUID, user_id: UUID, team_id: UUID) -> File:
+        """The checks from api-internal.md, in order. Errors name the file in fields.file_id."""
+        fields = {"file_id": str(file_id)}
+        if file is None or file.deleted_at is not None:
+            raise NotFound(ErrorCode.FILE_NOT_FOUND, fields=fields)
+        if file.owner_id != user_id:
+            raise PermissionDenied(
+                ErrorCode.NOT_FILE_OWNER, "Another user uploaded the file", fields=fields
+            )
+        if file.purpose != File.Purpose.ATTACHMENT:
+            raise BadRequest(ErrorCode.WRONG_PURPOSE, "Not an attachment", fields=fields)
+        if file.team_id != team_id:
+            raise BadRequest(ErrorCode.WRONG_TEAM, "The file is of another team", fields=fields)
+        if file.status != File.Status.READY:
+            raise Conflict(ErrorCode.FILE_NOT_READY, "The upload was not confirmed", fields=fields)
+        if file.attached_at is not None:
+            raise Conflict(
+                ErrorCode.FILE_ALREADY_ATTACHED, "The file is already in a message", fields=fields
+            )
+        return file

@@ -1,5 +1,6 @@
 import pytest
 
+from channels.models import Channel
 from files.models import File
 from shared import storage
 from shared.redis import get_redis_client
@@ -32,6 +33,12 @@ async def team(user):
     team = await Team.objects.acreate(name="Backend", created_by=user)
     await TeamMember.objects.acreate(team=team, user=user, role=TeamMember.Role.OWNER)
     return team
+
+
+@pytest.fixture
+async def channel(team):
+    """A public channel of the team, where attachments are sent."""
+    return await Channel.objects.acreate(team=team, name="general", kind=Channel.Kind.PUBLIC)
 
 
 @pytest.fixture

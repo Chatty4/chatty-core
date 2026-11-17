@@ -82,7 +82,25 @@ class FileRepository:
         File.objects.filter(id=file_id, deleted_at__isnull=True).update(deleted_at=now)
 
     @staticmethod
+    def mark_attached_sync(file_ids: list[UUID], now: datetime) -> None:
+        File.objects.filter(id__in=file_ids).update(attached_at=now)
+
+    @staticmethod
+    def mark_detached_sync(file_ids: list[UUID], now: datetime) -> None:
+        """Attachments not deleted yet: out of their message, and deleted. Others are skipped."""
+        File.objects.filter(
+            id__in=file_ids, purpose=File.Purpose.ATTACHMENT, deleted_at__isnull=True
+        ).update(attached_at=None, deleted_at=now)
+
+    @staticmethod
     def lock_sync(file_id: UUID) -> File | None:
         """The file, its row locked until the transaction ends. Deleting it and using it as an
         avatar or a team icon all lock it first, so they never overlap."""
         return File.objects.select_for_update(no_key=True).filter(id=file_id).first()
+
+    @staticmethod
+    def lock_many_sync(file_ids: list[UUID]) -> dict[UUID, File]:
+        """The files that exist, by id, their rows locked until the transaction ends. Locked in id
+        order, so two transactions that lock some of the same files can't deadlock."""
+        files = File.objects.select_for_update(no_key=True).filter(id__in=file_ids).order_by("id")
+        return {file.id: file for file in files}
