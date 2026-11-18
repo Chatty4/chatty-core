@@ -33,6 +33,8 @@ IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 MAX_IMAGE_SIZE = 2 * MB  # avatars and team icons
 MAX_ATTACHMENT_SIZE = 25 * MB
 
+CLEANUP_BATCH = 500  # files per run; 2 keys each stays under MinIO's 1000 keys per delete call
+
 # D-18: programs and installers, refused for every purpose. Confirm also checks the bytes.
 BLOCKED_EXTENSIONS = {
     ".exe", ".dll", ".com", ".scr", ".cpl", ".msi", ".msp", ".msix", ".appx", ".bat", ".cmd",
@@ -337,3 +339,30 @@ class FileService:
                 ErrorCode.FILE_ALREADY_ATTACHED, "The file is already in a message", fields=fields
             )
         return file
+
+    @staticmethod
+    def clean_up(now: datetime, limit: int = CLEANUP_BATCH) -> tuple[int, int]:
+        """The hourly job (D-17): mark unused files deleted, then remove deleted files from MinIO
+        and their rows. Returns (marked, removed)."""
+        marked = sum(
+            FileService._mark_if_unused_sync(file_id, now)
+            for file_id in FileRepository.unused_ids_sync(now, limit)
+        )
+
+        files = FileRepository.deleted_sync(limit)
+        # Raises if MinIO fails: the rows stay, and the next run tries again
+        storage.delete(*[key for file in files for key in (file.object_key, f"uploads/{file.id}")])
+        removed = FileRepository.delete_rows_sync([file.id for file in files])
+        return marked, removed
+
+    @staticmethod
+    @transaction.atomic
+    def _mark_if_unused_sync(file_id: UUID, now: datetime) -> bool:
+        """Under the file's row lock, like attach, PUT /me and PUT /teams: a file sent or set as
+        an avatar at this moment is either seen here and skipped, or waits and then fails."""
+        if FileRepository.lock_sync(file_id) is None:
+            return False
+        if not FileRepository.is_unused_sync(file_id, now):
+            return False
+        FileRepository.mark_deleted_sync(file_id, now)
+        return True
