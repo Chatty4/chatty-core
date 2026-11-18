@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Exists, OuterRef, Q
 
 from files.models import File
-
+from teams.models import Team
 
 class FileRepository:
     @staticmethod
