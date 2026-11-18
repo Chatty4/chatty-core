@@ -65,7 +65,7 @@ authn/                  refresh token model, RS256 JWT issuance, rotation and re
   views.py              public API endpoints (thin)
   admin.py              Django admin; business actions call services (users: deactivate)
   urls.py
-  management/commands/  manage.py commands (authn: purge_refresh_tokens)
+  management/commands/  manage.py commands (authn: purge_refresh_tokens, files: clean_up_files)
   internal/             /internal endpoints for chatty-chat, mounted in config/urls.py under
                         "internal/" (users: GET /internal/users/{user_id}/memberships,
                         channels: GET /internal/channels/{channel_id})

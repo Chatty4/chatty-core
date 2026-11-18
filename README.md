@@ -102,8 +102,6 @@ Uploads go straight from the browser to MinIO in 3 steps: `POST files` → `PUT`
 
 `PUT me` and `PUT teams/{team_id}` take only a `ready` avatar of mine or a `ready` icon of that team.
 
-Not built yet: the cleanup job for unused files (CHAT-168).
-
 ## Daily commands
 
 | Task | Command |
@@ -115,6 +113,7 @@ Not built yet: the cleanup job for unused files (CHAT-168).
 | Deactivate a user | `/admin/` → Users → tick them → action "Deactivate selected users". Delete is turned off |
 | New migration | `python manage.py makemigrations && python manage.py migrate` |
 | Purge old tokens | `python manage.py purge_refresh_tokens` (default: older than 30 days) |
+| Remove unused files | `python manage.py clean_up_files` (every hour in Docker) |
 | See the files in MinIO | Console at <http://127.0.0.1:9001>, logged in with `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` from `chatty-infra/.env` |
 
 `purge_refresh_tokens` deletes refresh tokens that are expired **or** revoked and older than the cutoff.
