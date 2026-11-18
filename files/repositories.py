@@ -2,10 +2,14 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
-from django.db.models import QuerySet, Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef, Q, QuerySet
 
 from files.models import File
 from teams.models import Team
+
+UNSENT_FILE_HOURS = 24  # D-17: the web app must send a file within 24 h of uploading it
+EXPIRED_UPLOAD_GRACE = timedelta(hours=1)  # a confirm that started just before expiry can finish
+
 
 class FileRepository:
     @staticmethod
@@ -104,3 +108,49 @@ class FileRepository:
         order, so two transactions that lock some of the same files can't deadlock."""
         files = File.objects.select_for_update(no_key=True).filter(id__in=file_ids).order_by("id")
         return {file.id: file for file in files}
+
+    @staticmethod
+    def deleted_sync(limit: int) -> list[File]:
+        """Files marked deleted, oldest first: their objects are next to remove from MinIO."""
+        return list(File.objects.filter(deleted_at__isnull=False).order_by("deleted_at")[:limit])
+
+    @staticmethod
+    def delete_rows_sync(file_ids: list[UUID]) -> int:
+        """Rows only; call this after their MinIO objects are gone."""
+        count, _ = File.objects.filter(id__in=file_ids, deleted_at__isnull=False).delete()
+        return count
+
+    @staticmethod
+    def _unused_qs(now: datetime) -> QuerySet[File]:
+        """Files nobody needs anymore (D-17): the one rule the cleanup job uses."""
+        day_ago = now - timedelta(hours=UNSENT_FILE_HOURS)
+        ready_and_old = Q(status=File.Status.READY, created_at__lt=day_ago)
+        return File.objects.filter(deleted_at__isnull=True).filter(
+            # upload started, never confirmed
+            Q(status=File.Status.PENDING, upload_expires_at__lt=now - EXPIRED_UPLOAD_GRACE)
+            # attachment never sent in a message
+            | (ready_and_old & Q(purpose=File.Purpose.ATTACHMENT, attached_at__isnull=True))
+            # avatar nobody has (replaced, or never set)
+            | (
+                ready_and_old
+                & Q(purpose=File.Purpose.AVATAR)
+                & ~Exists(get_user_model().objects.filter(avatar_id=OuterRef("id")))
+            )
+            # team icon no team has
+            | (
+                ready_and_old
+                & Q(purpose=File.Purpose.TEAM_ICON)
+                & ~Exists(Team.objects.filter(icon_id=OuterRef("id")))
+            )
+            # any file of a deleted team, even attached ones: the team is 404 everywhere
+            | Q(team__deleted_at__isnull=False)
+        )
+
+    @staticmethod
+    def unused_ids_sync(now: datetime, limit: int) -> list[UUID]:
+        return list(FileRepository._unused_qs(now).values_list("id", flat=True)[:limit])
+
+    @staticmethod
+    def is_unused_sync(file_id: UUID, now: datetime) -> bool:
+        """The same rule for one file. Called under its row lock, so the answer holds."""
+        return FileRepository._unused_qs(now).filter(id=file_id).exists()
