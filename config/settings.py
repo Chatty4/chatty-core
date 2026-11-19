@@ -55,6 +55,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Serves /static/ (the admin's CSS and icons): uvicorn doesn't, unlike runserver
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -154,6 +156,9 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = "static/"
+# collectstatic copies the files here when the image is built. With DEBUG, WhiteNoise reads them
+# straight from the apps, so local runs don't need collectstatic.
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "shared.exception_handler.exception_handler",
