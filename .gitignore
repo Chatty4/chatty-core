@@ -226,3 +226,6 @@ __marimo__/
 
 # Performance benchmarks — not part of the test suite
 perf/
+
+# collectstatic output (built into the Docker image)
+staticfiles/

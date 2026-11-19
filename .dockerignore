@@ -21,3 +21,6 @@ Dockerfile
 .dockerignore
 CLAUDE.md
 README.md
+
+# Collected in the image by collectstatic
+staticfiles/

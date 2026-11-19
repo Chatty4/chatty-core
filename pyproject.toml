@@ -14,3 +14,5 @@ DJANGO_SETTINGS_MODULE = "config.settings"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+# staticfiles/ only exists in the Docker image (collectstatic); tests don't serve static files
+filterwarnings = ["ignore:No directory at:UserWarning"]

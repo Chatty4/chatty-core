@@ -13,6 +13,15 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
+# The admin's static files, served by WhiteNoise. collectstatic only copies files, but it loads the
+# settings, so the required ones get throwaway values here; the real ones come at run time.
+RUN SECRET_KEY=build CORE_SERVICE_TOKEN=build ALLOWED_HOSTS=localhost \
+    DATABASE_URL=sqlite:////tmp/build.db REDIS_URL=redis://localhost:6379/0 \
+    JWT_PRIVATE_KEY_PATH=/dev/null JWT_PUBLIC_KEY_PATH=/dev/null \
+    MINIO_INTERNAL_URL=http://localhost MINIO_PUBLIC_URL=http://localhost \
+    MINIO_ACCESS_KEY=build MINIO_SECRET_KEY=build MINIO_BUCKET=build \
+    python manage.py collectstatic --noinput
+
 RUN useradd --create-home --uid 1000 app
 USER app
 
