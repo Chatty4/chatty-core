@@ -26,11 +26,9 @@ class ChannelRepository:
         return await Channel.objects.filter(id=channel_id).select_related("team").afirst()
 
     @staticmethod
-    async def find_dm(team_id: UUID, dm_key: str) -> Channel | None:
+    def find_dm_sync(team_id: UUID, dm_key: str) -> Channel | None:
         """The team's DM between exactly these people, or None."""
-        return await Channel.objects.filter(
-            team_id=team_id, kind=Channel.Kind.DM, dm_key=dm_key
-        ).afirst()
+        return Channel.objects.filter(team_id=team_id, kind=Channel.Kind.DM, dm_key=dm_key).first()
 
     @staticmethod
     async def browse(

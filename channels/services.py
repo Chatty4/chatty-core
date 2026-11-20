@@ -329,32 +329,9 @@ class ChannelService:
         if not 1 <= len(others) <= 7:
             raise ValidationFailed(fields={"user_ids": "invalid"})
 
-        in_team = await TeamMemberRepository.list_members_by_user_ids(team_id, others)
-        if len(in_team) != len(others):
-            raise BadRequest(ErrorCode.USER_NOT_IN_TEAM)
-
-        member_ids = [user_id, *others]
-        dm_key = ":".join(sorted(str(uid) for uid in member_ids))
-
-        channel = await ChannelRepository.find_dm(team_id, dm_key)
-        created = False
-        if channel is None:
-            try:
-                channel = await sync_to_async(ChannelService._create_dm_sync)(
-                    team, user_id, member_ids, dm_key
-                )
-                created = True
-            except IntegrityError:  # unique_dm_key_per_team: opened by someone else just now
-                channel = await ChannelRepository.find_dm(team_id, dm_key)
-                if channel is None:  # can't happen: DMs are never deleted
-                    raise
-
-        added = member_ids  # a new DM: everyone was added
-        if not created:
-            # people who left the team lost their DM membership; they get it back
-            added = await ChannelMemberRepository.add_many(
-                channel.id, member_ids, ChannelMember.NotifyLevel.ALL
-            )
+        channel, added, created = await sync_to_async(ChannelService._open_dm_sync)(
+            team, user_id, others
+        )
         for added_id in added:
             await events.publish(
                 EventType.MEMBERSHIP_CHANGED,
@@ -366,8 +343,29 @@ class ChannelService:
 
     @staticmethod
     @transaction.atomic
+    def _open_dm_sync(
+        team: Team, user_id: UUID, others: list[UUID]
+    ) -> tuple[Channel, list[UUID], bool]:
+        """(channel, added, created) under the team lock: a prallel removal can't put someone in
+        the DM, and two opens of the same new DM create it once."""
+        ChannelService._lock_team_sync(team.id, user_id, others)
+        member_ids = [user_id, *others]
+        dm_key = ":".join(sorted(str(uid) for uid in member_ids))
+
+        channel = ChannelRepository.find_dm_sync(team.id, dm_key)
+        if channel is None:
+            channel = ChannelService._create_dm_sync(team, user_id, member_ids, dm_key)
+            return channel, member_ids, True
+
+        # people who left the team lost their DM membership; they get it back
+        added = ChannelMemberRepository.add_many_sync(
+            channel.id, member_ids, ChannelMember.NotifyLevel.ALL
+        )
+        return channel, added, False
+
+    @staticmethod
     def _create_dm_sync(team: Team, user_id: UUID, member_ids: list[UUID], dm_key: str) -> Channel:
-        """The DM and all its members in one transaction."""
+        """The DM and all its members. Only inside _open_dm_sync, which holds the team lock."""
         channel = ChannelRepository.create_sync(
             team=team,
             name="",
