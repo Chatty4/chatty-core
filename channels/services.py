@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import asdict
 from typing import Literal
 from uuid import UUID
@@ -77,6 +78,9 @@ class ChannelService:
     @staticmethod
     @transaction.atomic
     def _create_sync(team: Team, user_id: UUID, name: str, kind: str, topic: str) -> Channel:
+        """Re-checks I'm in the team under its lock, so a parallel removal can't leave me
+        owning a channel there."""
+        ChannelService._lock_team_sync(team.id, user_id)
         channel = ChannelRepository.create_sync(
             team=team, name=name, kind=kind, is_default=False, created_by_id=user_id, topic=topic
         )
@@ -382,3 +386,15 @@ class ChannelService:
             )
 
         return channel
+
+    @staticmethod
+    def _lock_team_sync(team_id: UUID, user_id: UUID, others: Sequence[UUID] = ()) -> None:
+        """Lock the team row, then check that I and `others` are still in the team.
+        A team removal takes the same lock, so it can't land between this check and the insert."""
+        if not TeamRepository.lock_sync(team_id):
+            raise NotFound(ErrorCode.TEAM_NOT_FOUND)
+        in_team = TeamMemberRepository.list_member_ids_sync(team_id, [user_id, *others])
+        if user_id not in in_team:
+            raise PermissionDenied(ErrorCode.NOT_A_TEAM_MEMBER)
+        if not set(others) <= in_team:
+            raise BadRequest(ErrorCode.USER_NOT_IN_TEAM)
