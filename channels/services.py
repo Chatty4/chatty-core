@@ -346,7 +346,7 @@ class ChannelService:
     def _open_dm_sync(
         team: Team, user_id: UUID, others: list[UUID]
     ) -> tuple[Channel, list[UUID], bool]:
-        """(channel, added, created) under the team lock: a prallel removal can't put someone in
+        """(channel, added, created) under the team lock: a parallel removal can't put someone in
         the DM, and two opens of the same new DM create it once."""
         ChannelService._lock_team_sync(team.id, user_id, others)
         member_ids = [user_id, *others]

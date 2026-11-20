@@ -98,25 +98,6 @@ class ChannelMemberRepository:
         )
 
     @staticmethod
-    async def add_many(channel_id: UUID, user_ids: list[UUID], notify_level: str) -> list[UUID]:
-        """Add the users who aren't members yet.
-        Return the ids actually added, in the order given."""
-        members = [
-            ChannelMember(channel_id=channel_id, user_id=uid, notify_level=notify_level)
-            for uid in user_ids
-        ]
-        # existing members, and anyone a parallel request just added, are skipped by the unique key
-        await ChannelMember.objects.abulk_create(members, ignore_conflicts=True)
-        # only rows inserted here carry the ids generated above
-        inserted = {
-            uid
-            async for uid in ChannelMember.objects.filter(
-                id__in=[m.id for m in members]
-            ).values_list("user_id", flat=True)
-        }
-        return [uid for uid in user_ids if uid in inserted]
-
-    @staticmethod
     def add_many_sync(channel_id: UUID, user_ids: list[UUID], notify_level: str) -> list[UUID]:
         """add_many for use inside the caller's transaction.atomic."""
         members = [
