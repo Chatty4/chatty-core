@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import asdict
 from typing import Literal
 from uuid import UUID
@@ -77,6 +78,9 @@ class ChannelService:
     @staticmethod
     @transaction.atomic
     def _create_sync(team: Team, user_id: UUID, name: str, kind: str, topic: str) -> Channel:
+        """Re-checks I'm in the team under its lock, so a parallel removal can't leave me
+        owning a channel there."""
+        ChannelService._lock_team_sync(team.id, user_id)
         channel = ChannelRepository.create_sync(
             team=team, name=name, kind=kind, is_default=False, created_by_id=user_id, topic=topic
         )
@@ -325,32 +329,9 @@ class ChannelService:
         if not 1 <= len(others) <= 7:
             raise ValidationFailed(fields={"user_ids": "invalid"})
 
-        in_team = await TeamMemberRepository.list_members_by_user_ids(team_id, others)
-        if len(in_team) != len(others):
-            raise BadRequest(ErrorCode.USER_NOT_IN_TEAM)
-
-        member_ids = [user_id, *others]
-        dm_key = ":".join(sorted(str(uid) for uid in member_ids))
-
-        channel = await ChannelRepository.find_dm(team_id, dm_key)
-        created = False
-        if channel is None:
-            try:
-                channel = await sync_to_async(ChannelService._create_dm_sync)(
-                    team, user_id, member_ids, dm_key
-                )
-                created = True
-            except IntegrityError:  # unique_dm_key_per_team: opened by someone else just now
-                channel = await ChannelRepository.find_dm(team_id, dm_key)
-                if channel is None:  # can't happen: DMs are never deleted
-                    raise
-
-        added = member_ids  # a new DM: everyone was added
-        if not created:
-            # people who left the team lost their DM membership; they get it back
-            added = await ChannelMemberRepository.add_many(
-                channel.id, member_ids, ChannelMember.NotifyLevel.ALL
-            )
+        channel, added, created = await sync_to_async(ChannelService._open_dm_sync)(
+            team, user_id, others
+        )
         for added_id in added:
             await events.publish(
                 EventType.MEMBERSHIP_CHANGED,
@@ -362,8 +343,29 @@ class ChannelService:
 
     @staticmethod
     @transaction.atomic
+    def _open_dm_sync(
+        team: Team, user_id: UUID, others: list[UUID]
+    ) -> tuple[Channel, list[UUID], bool]:
+        """(channel, added, created) under the team lock: a parallel removal can't put someone in
+        the DM, and two opens of the same new DM create it once."""
+        ChannelService._lock_team_sync(team.id, user_id, others)
+        member_ids = [user_id, *others]
+        dm_key = ":".join(sorted(str(uid) for uid in member_ids))
+
+        channel = ChannelRepository.find_dm_sync(team.id, dm_key)
+        if channel is None:
+            channel = ChannelService._create_dm_sync(team, user_id, member_ids, dm_key)
+            return channel, member_ids, True
+
+        # people who left the team lost their DM membership; they get it back
+        added = ChannelMemberRepository.add_many_sync(
+            channel.id, member_ids, ChannelMember.NotifyLevel.ALL
+        )
+        return channel, added, False
+
+    @staticmethod
     def _create_dm_sync(team: Team, user_id: UUID, member_ids: list[UUID], dm_key: str) -> Channel:
-        """The DM and all its members in one transaction."""
+        """The DM and all its members. Only inside _open_dm_sync, which holds the team lock."""
         channel = ChannelRepository.create_sync(
             team=team,
             name="",
@@ -382,3 +384,15 @@ class ChannelService:
             )
 
         return channel
+
+    @staticmethod
+    def _lock_team_sync(team_id: UUID, user_id: UUID, others: Sequence[UUID] = ()) -> None:
+        """Lock the team row, then check that I and `others` are still in the team.
+        A team removal takes the same lock, so it can't land between this check and the insert."""
+        if not TeamRepository.lock_sync(team_id):
+            raise NotFound(ErrorCode.TEAM_NOT_FOUND)
+        in_team = TeamMemberRepository.list_member_ids_sync(team_id, [user_id, *others])
+        if user_id not in in_team:
+            raise PermissionDenied(ErrorCode.NOT_A_TEAM_MEMBER)
+        if not set(others) <= in_team:
+            raise BadRequest(ErrorCode.USER_NOT_IN_TEAM)

@@ -1,7 +1,6 @@
 import pytest
 
 from channels.models import Channel, ChannelMember
-from channels.repositories import ChannelRepository
 from teams.models import TeamMember
 from teams.services import TeamService
 from tests.helpers import headers_for, make_user
@@ -98,22 +97,6 @@ async def test_member_who_left_and_rejoined_gets_dm_back(async_client, team, use
     assert response.status_code == 200
     assert response.json()["id"] == first["id"]
     assert str(users["bob"].id) in response.json()["member_ids"]
-
-
-async def test_dm_opened_at_the_same_time_returns_existing(async_client, team, users, monkeypatch):
-    first = (await open_dm(async_client, team, users["ana"], [users["bob"]])).json()
-    original = ChannelRepository.find_dm
-    calls = []
-
-    async def first_lookup_misses(team_id, dm_key):  # as if the other request committed after it
-        calls.append(dm_key)
-        return None if len(calls) == 1 else await original(team_id, dm_key)
-
-    monkeypatch.setattr(ChannelRepository, "find_dm", staticmethod(first_lookup_misses))
-    response = await open_dm(async_client, team, users["bob"], [users["ana"]])
-
-    assert response.status_code == 200
-    assert response.json()["id"] == first["id"]
 
 
 # --- errors ---
