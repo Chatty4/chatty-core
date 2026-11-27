@@ -6,6 +6,7 @@ from pathlib import PurePath
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
+from botocore.exceptions import BotoCoreError, ClientError
 from django.db import transaction
 from django.utils import timezone
 
@@ -13,10 +14,18 @@ from channels.repositories.channels import ChannelRepository
 from files import checks
 from files.models import File
 from files.repositories import FileRepository
-from files.schemas import UploadResult
+from files.schemas import FileCopy, UploadResult
 from shared import storage
 from shared.codes import ErrorCode
-from shared.exceptions import BadRequest, Conflict, Gone, NotFound, PermissionDenied, RateLimited
+from shared.exceptions import (
+    BadRequest,
+    Conflict,
+    Gone,
+    NotFound,
+    PermissionDenied,
+    RateLimited,
+    ServiceUnavailable,
+)
 from shared.redis import rate_limit
 from teams.repositories import TeamMemberRepository, TeamRepository
 from teams.services.teams import MANAGERS, TeamService
@@ -63,6 +72,55 @@ _KEY_PREFIXES = {
 
 
 class FileService:
+    @staticmethod
+    @transaction.atomic(savepoint=False)
+    def _lock_and_check_sync(
+        file_ids: list[UUID], channel_id: UUID, *, owner_id: UUID | None, in_message: bool
+    ) -> list[File]:
+        """The files in the order of file_ids, checked under their row lock (D-17), so a file can't
+        be deleted or attached elsewhere meanwhile."""
+        team_id = ChannelRepository.get_team_id_sync(channel_id)
+        if team_id is None:
+            raise NotFound(ErrorCode.CHANNEL_NOT_FOUND)
+
+        found = FileRepository.lock_many_sync(file_ids)
+        return [
+            FileService._check_file(found.get(file_id), file_id, team_id, owner_id, in_message)
+            for file_id in file_ids
+        ]
+
+    @staticmethod
+    def _check_file(
+        file: File | None, file_id: UUID, team_id: UUID, owner_id: UUID | None, in_message: bool
+    ) -> File:
+        """The checks of attach (owner_id set, not in a message) and copy (anyone's file, in a
+        message) from api-internal.md, in order. Errors name the file in fields.file_id."""
+        fields = {"file_id": str(file_id)}
+        if file is None or file.deleted_at is not None:
+            raise NotFound(ErrorCode.FILE_NOT_FOUND, fields=fields)
+        if owner_id is not None and file.owner_id != owner_id:
+            raise PermissionDenied(
+                ErrorCode.NOT_FILE_OWNER, "Another user uploaded the file", fields=fields
+            )
+        if file.purpose != File.Purpose.ATTACHMENT:
+            raise BadRequest(ErrorCode.WRONG_PURPOSE, "Not an attachment", fields=fields)
+        if file.team_id != team_id:
+            raise BadRequest(ErrorCode.WRONG_TEAM, "The file is of another team", fields=fields)
+
+        if in_message:
+            if file.attached_at is None:
+                raise Conflict(
+                    ErrorCode.FILE_NOT_ATTACHED, "The file is not in a message", fields=fields
+                )
+            return file
+        if file.status != File.Status.READY:
+            raise Conflict(ErrorCode.FILE_NOT_READY, "The upload was not confirmed", fields=fields)
+        if file.attached_at is not None:
+            raise Conflict(
+                ErrorCode.FILE_ALREADY_ATTACHED, "The file is already in a message", fields=fields
+            )
+        return file
+
     @staticmethod
     async def create_upload(
         user_id: UUID, purpose: str, team_id: UUID | None, filename: str, mime: str, size: int
@@ -288,18 +346,9 @@ class FileService:
     def _attach_sync(
         file_ids: list[UUID], user_id: UUID, channel_id: UUID, now: datetime
     ) -> list[File]:
-        """Under the files' row lock, like delete and the cleanup job, so a file can't be deleted or
-        attached elsewhere meanwhile."""
-        team_id = ChannelRepository.get_team_id_sync(channel_id)
-        if team_id is None:
-            raise NotFound(ErrorCode.CHANNEL_NOT_FOUND)
-
-        found = FileRepository.lock_many_sync(file_ids)
-        files = [
-            FileService._check_attachable(found.get(file_id), file_id, user_id, team_id)
-            for file_id in file_ids
-        ]
-
+        files = FileService._lock_and_check_sync(
+            file_ids, channel_id, owner_id=user_id, in_message=False
+        )
         FileRepository.mark_attached_sync(file_ids, now)
         for file in files:
             file.attached_at = now
@@ -319,26 +368,74 @@ class FileService:
         FileRepository.mark_detached_sync(file_ids, now)
 
     @staticmethod
-    def _check_attachable(file: File | None, file_id: UUID, user_id: UUID, team_id: UUID) -> File:
-        """The checks from api-internal.md, in order. Errors name the file in fields.file_id."""
-        fields = {"file_id": str(file_id)}
-        if file is None or file.deleted_at is not None:
-            raise NotFound(ErrorCode.FILE_NOT_FOUND, fields=fields)
-        if file.owner_id != user_id:
-            raise PermissionDenied(
-                ErrorCode.NOT_FILE_OWNER, "Another user uploaded the file", fields=fields
+    async def copy(file_ids: list[UUID], user_id: UUID, channel_id: UUID) -> list[File]:
+        """Internal: copy attached files into new attached files of user_id, for a forward (D-20).
+        Objects are copied outside the transaction; the save checks the sources again."""
+        sources = await sync_to_async(FileService._lock_and_check_sync)(
+            file_ids, channel_id, owner_id=None, in_message=True
+        )
+        copies = [FileService._new_copy(source, user_id) for source in sources]
+        try:
+            for item in copies:
+                await sync_to_async(storage.copy, thread_sensitive=False)(
+                    item.source.object_key, item.object_key
+                )
+            return await sync_to_async(FileService._save_copies_sync)(
+                copies, user_id, channel_id, timezone.now()
             )
-        if file.purpose != File.Purpose.ATTACHMENT:
-            raise BadRequest(ErrorCode.WRONG_PURPOSE, "Not an attachment", fields=fields)
-        if file.team_id != team_id:
-            raise BadRequest(ErrorCode.WRONG_TEAM, "The file is of another team", fields=fields)
-        if file.status != File.Status.READY:
-            raise Conflict(ErrorCode.FILE_NOT_READY, "The upload was not confirmed", fields=fields)
-        if file.attached_at is not None:
-            raise Conflict(
-                ErrorCode.FILE_ALREADY_ATTACHED, "The file is already in a message", fields=fields
+        except Exception as e:
+            await FileService._remove_copied_objects(copies)
+            if isinstance(e, BotoCoreError | ClientError):
+                raise ServiceUnavailable(
+                    ErrorCode.STORAGE_UNAVAILABLE, "The files could not be copied; try again"
+                ) from e
+            raise
+
+    @staticmethod
+    def _new_copy(source: File, user_id: UUID) -> FileCopy:
+        file_id = uuid.uuid4()
+        key = FileService._object_key(File.Purpose.ATTACHMENT, user_id, source.team_id, file_id)
+        return FileCopy(source=source, file_id=file_id, object_key=key)
+
+    @staticmethod
+    @transaction.atomic
+    def _save_copies_sync(
+        copies: list[FileCopy], user_id: UUID, channel_id: UUID, now: datetime
+    ) -> list[File]:
+        """Checks the sources again under their lock: a message deleted during the copy is seen
+        here, and one deleted later waits until the copies are saved."""
+        FileService._lock_and_check_sync(
+            [item.source.id for item in copies], channel_id, owner_id=None, in_message=True
+        )
+        files = [
+            FileRepository.create_sync(
+                item.file_id,
+                owner_id=user_id,
+                team_id=item.source.team_id,
+                purpose=File.Purpose.ATTACHMENT,
+                object_key=item.object_key,
+                filename=item.source.filename,
+                mime=item.source.mime,
+                size=item.source.size,
+                upload_expires_at=now,  # no upload URL
+                status=File.Status.READY,
             )
-        return file
+            for item in copies
+        ]
+        FileRepository.mark_attached_sync([file.id for file in files], now)
+        for file in files:
+            file.attached_at = now
+        return files
+
+    @staticmethod
+    async def _remove_copied_objects(copies: list[FileCopy]) -> None:
+        """Best effort: a copied object that stays has no row, so nothing points to it."""
+        try:
+            await sync_to_async(storage.delete, thread_sensitive=False)(
+                *[item.object_key for item in copies]
+            )
+        except Exception:
+            logger.exception("Failed to delete the copied objects of %s", copies[0].source.id)
 
     @staticmethod
     def clean_up(now: datetime, limit: int = CLEANUP_BATCH) -> tuple[int, int]:

@@ -3,8 +3,8 @@ Services raise these, never DRF exceptions or HTTP responses. The exception hand
 shared/exception_handler.py turns them into the contract error body:
 {"error": {"code", "message", "fields"?}}.
 
-Codes come from shared/codes.py. Some classes have a default code. BadRequest, NotFound, Conflict
-and Gone have many codes in the contract, so the caller must pass one:
+Codes come from shared/codes.py. Some classes have a default code. BadRequest, NotFound, Conflict,
+Gone and ServiceUnavailable have many codes in the contract, so the caller must pass one:
     raise NotFound(ErrorCode.TEAM_NOT_FOUND)
 """
 
@@ -100,3 +100,8 @@ class InternalError(AppError):
     status_code = 500
     code = ErrorCode.INTERNAL_ERROR
     message = "Internal server error"
+
+
+class ServiceUnavailable(AppError):
+    status_code = 503
+    message = "Service unavailable"
