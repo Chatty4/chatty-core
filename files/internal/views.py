@@ -18,3 +18,10 @@ class FileDetachView(InternalAPIView):
         data = validated(DetachRequest, request.data)
         await FileService.detach(**data)
         return Response(status=204)
+
+
+class FileCopyView(InternalAPIView):
+    async def post(self, request):
+        data = validated(AttachRequest, request.data)
+        files = await FileService.copy(**data)
+        return Response(AttachResponse({"attachments": files}).data)
