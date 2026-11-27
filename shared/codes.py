@@ -63,6 +63,7 @@ class ErrorCode(StrEnum):
     FILE_ATTACHED = "file_attached"
     FILE_NOT_READY = "file_not_ready"
     FILE_ALREADY_ATTACHED = "file_already_attached"
+    FILE_NOT_ATTACHED = "file_not_attached"
 
     # 410
     UPLOAD_EXPIRED = "upload_expired"
@@ -70,3 +71,6 @@ class ErrorCode(StrEnum):
 
     # 429
     TOO_MANY_ATTEMPTS = "too_many_attempts"
+
+    # 503
+    STORAGE_UNAVAILABLE = "storage_unavailable"

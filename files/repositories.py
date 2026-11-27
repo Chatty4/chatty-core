@@ -54,8 +54,10 @@ class FileRepository:
         mime: str,
         size: int,
         upload_expires_at: datetime,
+        status: str = File.Status.PENDING,
     ) -> File:
-        """A pending file. The service picks file_id first, because object_key contains it."""
+        """A file, pending unless status says otherwise. The service picks file_id first, because
+        object_key contains it."""
         return File.objects.create(
             id=file_id,
             owner_id=owner_id,
@@ -65,6 +67,7 @@ class FileRepository:
             filename=filename,
             mime=mime,
             size=size,
+            status=status,
             upload_expires_at=upload_expires_at,
         )
 
